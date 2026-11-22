@@ -1,0 +1,10 @@
+modLoader="javafml"
+loaderVersion="[40,)"
+license="MIT"
+
+[[mods]]
+modId="mcservermanagerbridge"
+version="2.2.0"
+displayName="MCServerManagerBridge"
+authors="MCServerManager"
+description='''Loopback management bridge for MCServerManager on Forge servers.'''
