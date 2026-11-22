@@ -1,6 +1,6 @@
 # MCServerManager
 
-A local web panel and Windows system-tray manager for Minecraft servers and Velocity proxies.
+A web panel for Minecraft servers and Velocity proxies.
 
 ## Prerequisites
 
