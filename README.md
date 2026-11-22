@@ -5,7 +5,7 @@ A web panel for Minecraft servers and Velocity proxies.
 ## Prerequisites
 
 - **Node.js** 18+ and **npm**
-- **Java (JDK)** 8–25 (optional — can also be downloaded from the panel's **Java Runtimes** tab; JDK `javac` is only needed if recompiling the bridge JARs)
+- **Java (JDK)** 8–25 (optional - can also be downloaded from the panel's **Java Runtimes** tab; JDK `javac` is only needed if recompiling the bridge JARs)
 - **Windows** (for `MCServerManager.exe` tray app) or **Linux** (via `start.sh` or `systemd`)
 
 ## Features
@@ -45,3 +45,4 @@ npm.cmd run build
 npm run install:all
 npm run build:linux
 ```
+###### This README was AI-generated, the program works though!
