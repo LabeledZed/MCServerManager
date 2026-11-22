@@ -1,0 +1,1000 @@
+/* MCServerManager Application Layout, Aternos-Inspired Server Panel, Console & Beautified Config Studio */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  min-height: 100dvh;
+  background: var(--bg-canvas);
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border-inline-end: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  overflow-y: auto;
+  z-index: 40;
+}
+
+.brand-header {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  background: linear-gradient(135deg, color-mix(in oklab, var(--palette-slate), var(--palette-teal-deep) 24%), var(--palette-slate));
+}
+
+.brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.brand-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.08rem;
+  line-height: 1.1;
+  letter-spacing: 0.025em;
+}
+
+.brand-subtitle {
+  font-size: 0.75rem;
+  color: var(--accent-bright);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sidebar-section {
+  padding: 0.75rem 0.65rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--border-subtle), transparent 40%);
+}
+
+.sidebar-section-label {
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 0 0.55rem 0.45rem;
+}
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.54rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.96rem;
+  letter-spacing: 0.015em;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.nav-item:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.nav-item[aria-current='page'] {
+  background: var(--bg-accent-tint);
+  color: var(--text-primary);
+  border-color: var(--accent-deep);
+  border-inline-start: 3px solid var(--accent-bright);
+}
+
+.nav-item[aria-current='page'] svg {
+  color: var(--accent-bright);
+}
+
+.server-switcher-box {
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-subtle);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 0.75rem 0.85rem;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+/* ---------- Main Area & Topbar ---------- */
+.main-area {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  height: var(--topbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1.4rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.topbar-title {
+  font-size: 1.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.mobile-menu-btn {
+  display: none;
+}
+
+.page-content {
+  padding: 1.35rem 1.5rem 2.5rem;
+  max-width: 1460px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ---------- Cards & Grids ---------- */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.15rem 1.25rem;
+}
+
+.card-accent {
+  border-color: var(--accent-deep);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--palette-slate), var(--palette-teal-deep) 14%), var(--palette-slate));
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.card-title {
+  font-size: 1.12rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card-title svg {
+  color: var(--accent-bright);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+/* ---------- Aternos-Inspired Server Hero Card ---------- */
+.server-hero {
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--palette-slate), var(--palette-teal-deep) 24%) 0%,
+    var(--palette-slate) 55%,
+    color-mix(in oklab, var(--palette-dark), var(--palette-slate) 60%) 100%
+  );
+  border: 1px solid var(--accent-deep);
+  border-radius: var(--radius-lg);
+  padding: 1.4rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.server-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.server-hero-title {
+  font-size: 1.85rem;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+}
+
+.server-address-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.38rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-accent);
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  color: var(--accent-bright);
+}
+
+.power-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.stat-tile {
+  background: var(--bg-surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-label {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.stat-sub {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+/* Progress bar */
+.progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent-bright));
+  transition: width 220ms ease;
+}
+
+/* ---------- Live Console ---------- */
+.console-shell {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #121414;
+  height: calc(100dvh - 225px);
+  min-height: 440px;
+}
+
+.console-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.console-output {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.8rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.83rem;
+  line-height: 1.48;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.console-line {
+  display: flex;
+  gap: 0.6rem;
+  padding: 1px 0;
+}
+
+.console-ts {
+  color: #6b7f84;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.console-line.level-info { color: #d8e5e8; }
+.console-line.level-warn { color: #fcd34d; }
+.console-line.level-error { color: #fca5a5; }
+.console-line.level-chat { color: #86efac; }
+.console-line.level-system { color: var(--accent-bright); }
+.console-line.level-command { color: #93c5fd; font-weight: 600; }
+
+.log-hit {
+  background: rgba(250, 204, 21, 0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.btn-ghost.active {
+  background: var(--bg-surface-subtle);
+  border-color: var(--border-accent);
+  color: var(--accent-bright);
+}
+
+.log-file-group + .log-file-group {
+  margin-top: 0.75rem;
+}
+
+.log-file-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  margin-bottom: 0.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-bright);
+  position: sticky;
+  top: 0;
+}
+
+/* ---------- Realms, Colored Portals & Per-World Plugins ---------- */
+.realm-group-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.color-swatch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  flex-wrap: wrap;
+}
+
+.color-input-native {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  cursor: pointer;
+}
+
+.color-dot-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.14);
+}
+
+.color-dot-mini {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.color-dot-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.color-dot-btn:hover {
+  transform: scale(1.12);
+}
+
+.color-dot-btn.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px var(--bg-canvas);
+}
+
+.player-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: var(--bg-surface-subtle);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.82rem;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.chip-inline-action {
+  border: 0;
+  background: var(--bg-accent-tint);
+  color: var(--accent-bright);
+  border-radius: var(--radius-sm);
+  padding: 0.08rem 0.38rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip-inline-action:hover {
+  background: var(--accent-deep);
+  color: #ffffff;
+}
+
+.chip-inline-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 999px;
+}
+
+.chip-inline-remove:hover {
+  color: var(--status-danger);
+  background: var(--status-danger-bg);
+}
+
+.portal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.82rem;
+}
+
+.scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  min-height: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-subtle);
+  color: var(--text-secondary);
+  font-size: 0.81rem;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.scope-chip:hover {
+  border-color: var(--accent-mid);
+  color: var(--text-primary);
+}
+
+.scope-chip.active {
+  border-color: var(--accent-bright);
+  background: var(--bg-accent-tint);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.standalone-details {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.65rem;
+  background: var(--bg-canvas);
+  font-size: 0.84rem;
+}
+
+.standalone-details summary {
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.console-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.console-prompt-prefix {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent-bright);
+  user-select: none;
+}
+
+.console-quick-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  background: var(--bg-surface-subtle);
+  border-top: 1px solid color-mix(in oklab, var(--border-subtle), transparent 40%);
+  overflow-x: auto;
+}
+
+.chip-btn {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip-btn:hover {
+  border-color: var(--accent-bright);
+  color: var(--accent-bright);
+}
+
+/* ---------- Config Studio & Plugin Config Explorer (Split Pane) ---------- */
+.studio-layout {
+  display: grid;
+  grid-template-columns: 290px 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.studio-sidebar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  position: sticky;
+  top: calc(var(--topbar-height) + 1rem);
+  max-height: calc(100dvh - var(--topbar-height) - 2.5rem);
+  display: flex;
+  flex-direction: column;
+}
+
+.studio-sidebar-header {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.studio-sidebar-list {
+  overflow-y: auto;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.studio-group-label {
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent-bright);
+  padding: 0.55rem 0.5rem 0.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.studio-file-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.88rem;
+}
+
+.studio-file-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.studio-file-btn.active {
+  background: var(--bg-accent-tint);
+  border-color: var(--accent-deep);
+  color: var(--text-primary);
+}
+
+.studio-file-btn.missing {
+  opacity: 0.68;
+}
+
+/* Beautified Visual Config Editor */
+.config-editor-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.config-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-subtle);
+  flex-wrap: wrap;
+}
+
+.config-editor-body {
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cfg-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(240px, 1.2fr) auto;
+  align-items: start;
+  gap: 0.85rem;
+  padding: 0.72rem 0.85rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  border: 1px solid color-mix(in oklab, var(--border-subtle), transparent 35%);
+}
+
+.cfg-row:hover {
+  border-color: var(--accent-deep);
+}
+
+.cfg-key-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.cfg-key-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.96rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.cfg-key-raw {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--accent-bright);
+  background: var(--bg-accent-tint);
+  padding: 0.08rem 0.4rem;
+  border-radius: var(--radius-sm);
+  word-break: break-all;
+}
+
+.cfg-comment {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  line-height: 1.38;
+}
+
+.cfg-array-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  border: 1px solid color-mix(in oklab, var(--border-subtle), transparent 30%);
+}
+
+.cfg-array-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.mode-segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-canvas);
+}
+
+.mode-segmented button {
+  padding: 0.36rem 0.8rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mode-segmented button.active {
+  background: var(--accent-mid);
+  color: #ffffff;
+}
+
+.mode-segmented button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Minecraft MOTD live preview banner */
+.motd-preview {
+  background: #141414;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.7rem 0.95rem;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+/* CodeMirror 6 wrapper */
+.cm-wrapper {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.cm-wrapper .cm-editor {
+  min-height: 460px;
+  max-height: 68vh;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+}
+
+/* Empty state & Banners */
+.empty-state {
+  text-align: center;
+  padding: 2.6rem 1.5rem;
+  border: 1px dashed var(--border-control);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-subtle);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.78rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-accent);
+  background: var(--bg-accent-tint);
+  font-size: 0.9rem;
+}
+
+.banner-warn {
+  border-color: color-mix(in oklab, var(--status-warn), transparent 40%);
+  background: var(--status-warn-bg);
+}
+
+.banner-danger {
+  border-color: color-mix(in oklab, var(--status-danger), transparent 40%);
+  background: var(--status-danger-bg);
+}
+
+/* Server Cards on Dashboard */
+.server-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.server-card:hover {
+  border-color: var(--accent-mid);
+  background: var(--bg-surface-elevated);
+}
+
+/* Addon Marketplace cards */
+.addon-card {
+  background: var(--bg-surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.95rem 1.05rem;
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.addon-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  object-fit: cover;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--accent-bright);
+}
+
+/* Login screen */
+.login-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in oklab, var(--palette-teal-deep), transparent 72%), transparent 45%),
+    radial-gradient(circle at 80% 80%, color-mix(in oklab, var(--palette-cyan-bright), transparent 80%), transparent 45%),
+    var(--bg-canvas);
+}
+
+.login-card {
+  width: min(410px, 100%);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.55);
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1080px) {
+  .grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .studio-layout {
+    grid-template-columns: 1fr;
+  }
+  .studio-sidebar {
+    position: static;
+    max-height: 300px;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: min(290px, 85vw);
+    transform: translateX(-105%);
+    transition: transform 200ms ease;
+    box-shadow: 12px 0 40px rgb(0 0 0 / 0.6);
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .cfg-row {
+    grid-template-columns: 1fr;
+  }
+}

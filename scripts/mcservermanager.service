@@ -1,0 +1,20 @@
+[Unit]
+Description=MCServerManager - Local Minecraft Server Panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mcserver
+Group=mcserver
+WorkingDirectory=/opt/mcservermanager
+Environment=NODE_ENV=production
+Environment=PORT=3001
+ExecStart=/usr/bin/node /opt/mcservermanager/server/dist/server/src/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

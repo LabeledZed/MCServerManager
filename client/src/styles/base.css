@@ -1,0 +1,734 @@
+/* Base styles, native dialog, switch, details accordion, scrollbars, responsive tables, and toasts */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent-deep);
+  color: #ffffff;
+}
+
+/* Custom Scrollbars — Standard scrollbar-color first (never scrollbar-width: thin for accessibility),
+   with legacy WebKit fallback strictly gated behind @supports not (scrollbar-color: auto) */
+html,
+.scroller {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: auto;
+}
+
+@supports not (scrollbar-color: auto) {
+  html,
+  .scroller {
+    scrollbar-width: auto;
+  }
+  html::-webkit-scrollbar,
+  .scroller::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  html::-webkit-scrollbar-thumb,
+  .scroller::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+  }
+  html::-webkit-scrollbar-track,
+  .scroller::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+}
+
+/* Typography */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--font-mono);
+}
+
+a {
+  color: var(--accent-bright);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* Accessible focus outlines (WCAG 1.4.11 >= 3:1 contrast) */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* Canonical screen-reader-only helper (never display: none) */
+.visually-hidden {
+  position: absolute;
+  clip-path: inset(50%);
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  white-space: nowrap;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.94rem;
+  letter-spacing: 0.02em;
+  padding: 0.52rem 1rem;
+  min-height: 38px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-control);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-bright);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent-mid);
+  border-color: var(--accent-bright);
+  color: var(--text-on-accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+  color: #091417;
+}
+
+.btn-secondary {
+  background: var(--accent-deep);
+  border-color: var(--accent-mid);
+  color: var(--text-on-accent);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--accent-mid);
+  border-color: var(--accent-bright);
+}
+
+.btn-success {
+  background: #177857;
+  border-color: var(--status-online);
+  color: #ffffff;
+}
+.btn-success:hover:not(:disabled) {
+  background: #1f946c;
+}
+
+.btn-danger {
+  background: #8f2828;
+  border-color: var(--status-danger);
+  color: #ffffff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #b13232;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.btn-sm {
+  padding: 0.32rem 0.68rem;
+  min-height: 32px;
+  font-size: 0.85rem;
+}
+
+.btn-lg {
+  padding: 0.72rem 1.45rem;
+  min-height: 46px;
+  font-size: 1.05rem;
+}
+
+/* ---------- Form Controls (modern-web-guidance: forms + browser-ui-theming) ---------- */
+.input,
+.select,
+.textarea {
+  font: inherit;
+  font-size: max(0.95rem, 1em);
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-md);
+  padding: 0.52rem 0.75rem;
+  min-height: 40px;
+  width: 100%;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.input:hover:not(:disabled),
+.select:hover:not(:disabled),
+.textarea:hover:not(:disabled) {
+  border-color: var(--accent-mid);
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+  border-color: var(--accent-bright);
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 1px;
+}
+
+/* Use :user-invalid instead of :invalid so empty required fields are not prematurely red on load */
+.input:not([type='range']):user-invalid,
+.select:user-invalid,
+.textarea:user-invalid {
+  border-color: var(--status-danger);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 92px;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+}
+
+.select {
+  cursor: pointer;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+}
+
+.field label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+}
+
+.field-hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+fieldset.field-group {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin: 0;
+}
+
+fieldset.field-group legend {
+  font-family: var(--font-display);
+  font-weight: 600;
+  padding: 0 0.45rem;
+  color: var(--accent-bright);
+}
+
+/* Native HTML Switch Control (modern-web-guidance: switch) */
+.switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+input[type='checkbox'][switch] {
+  accent-color: var(--accent-bright);
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+input[type='checkbox'][switch]:focus-visible {
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 3px;
+}
+
+input[type='file']::file-selector-button {
+  font-family: var(--font-display);
+  font-weight: 600;
+  background: var(--accent-deep);
+  color: var(--text-on-accent);
+  border: 1px solid var(--accent-mid);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.75rem;
+  margin-inline-end: 0.75rem;
+  cursor: pointer;
+}
+
+input[type='file']::file-selector-button:hover {
+  background: var(--accent-mid);
+}
+
+/* ---------- Native <dialog> Modal (modern-web-guidance: dialog) ---------- */
+dialog.mc-dialog {
+  padding: 0;
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  width: min(640px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2.5rem);
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.65);
+}
+
+dialog.mc-dialog.mc-dialog-wide {
+  width: min(860px, calc(100vw - 2rem));
+}
+
+/* Scope display strictly to dialog[open] so closed state is never overridden */
+dialog.mc-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mandatory scroll containment on both modal dialog and its ::backdrop */
+dialog.mc-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.mc-dialog::backdrop {
+  background: rgb(10 14 15 / 0.72);
+  backdrop-filter: blur(3px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.mc-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-subtle);
+}
+
+.mc-dialog-header h2 {
+  font-size: 1.22rem;
+}
+
+.mc-dialog-body {
+  padding: 1.25rem;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+.mc-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  padding: 0.9rem 1.25rem;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-subtle);
+}
+
+/* ---------- Native <details> Accordion for Nested Config Sections (modern-web-guidance: accordion) ---------- */
+details.cfg-section {
+  border: 1px solid var(--border-subtle);
+  border-inline-start: 3px solid var(--accent-deep);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-subtle);
+  margin-block-end: 0.65rem;
+}
+
+details.cfg-section[open] {
+  border-inline-start-color: var(--accent-bright);
+}
+
+details.cfg-section > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.62rem 0.85rem;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  transition: background-color 140ms ease;
+}
+
+details.cfg-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.cfg-section > summary:hover {
+  background: var(--bg-surface-hover);
+}
+
+/* Custom animated chevron placed directly before the label for vertical scanning */
+details.cfg-section > summary::before {
+  content: '';
+  inline-size: 0.95em;
+  block-size: 0.95em;
+  flex-shrink: 0;
+  background-color: var(--accent-bright);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+  rotate: -90deg;
+}
+
+details.cfg-section[open] > summary::before {
+  rotate: 0deg;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  details.cfg-section > summary::before {
+    transition: rotate 0.2s ease;
+  }
+}
+
+details.cfg-section::details-content {
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  contain: layout;
+}
+
+details.cfg-section:not([open])::details-content {
+  block-size: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  details.cfg-section::details-content {
+    transition: block-size 0.22s ease, content-visibility 0.22s ease, display 0.22s ease;
+    transition-behavior: allow-discrete;
+  }
+}
+
+.cfg-section-body {
+  padding: 0.65rem 0.85rem 0.85rem 1rem;
+  border-top: 1px solid color-mix(in oklab, var(--border-subtle), transparent 35%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* ---------- Tabs (modern-web-guidance: tabs — underline via border-block-end for Forced Colors) ---------- */
+.tablist {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border-subtle);
+  scroll-snap-type: inline proximity;
+}
+
+.tab-btn {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.65rem 1.05rem;
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.96rem;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+}
+
+.tab-btn[aria-selected='true'] {
+  color: var(--accent-bright);
+}
+
+.tab-btn[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  border-block-end: 3px solid var(--accent-bright);
+}
+
+/* ---------- Responsive Data Tables (modern-web-guidance: responsive-table) ---------- */
+.table-wrapper {
+  overflow: auto;
+  max-inline-size: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  container-type: inline-size;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+}
+
+.data-table caption {
+  text-align: left;
+  padding: 0.65rem 0.9rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-surface-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.data-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+}
+
+.data-table th {
+  padding: 0.65rem 0.85rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.86rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  background: var(--bg-surface-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 0.62rem 0.85rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--border-subtle), transparent 40%);
+  vertical-align: middle;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-surface-hover);
+}
+
+@container (width < 580px) {
+  .data-table.responsive-stack,
+  .data-table.responsive-stack thead,
+  .data-table.responsive-stack tbody,
+  .data-table.responsive-stack tr,
+  .data-table.responsive-stack th,
+  .data-table.responsive-stack td {
+    display: block;
+  }
+
+  .data-table.responsive-stack thead {
+    display: none;
+  }
+
+  .data-table.responsive-stack tbody tr {
+    margin: 0.65rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface-subtle);
+    padding: 0.5rem 0.75rem;
+  }
+
+  .data-table.responsive-stack tbody td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--border-subtle), transparent 55%);
+  }
+
+  .data-table.responsive-stack tbody td:last-child {
+    border-bottom: 0;
+  }
+
+  .data-table.responsive-stack tbody td[data-label]::before {
+    content: attr(data-label) ': ';
+    font-family: var(--font-display);
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+  }
+}
+
+/* ---------- Persistent Manual Popover Toast Notifications (modern-web-guidance: persistent-toast-notifications) ---------- */
+.toast-region {
+  position: fixed;
+  inset-block-end: 1.25rem;
+  inset-inline-end: 1.25rem;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  pointer-events: none;
+  max-width: min(390px, calc(100vw - 2rem));
+}
+
+.toast-item[popover] {
+  position: fixed;
+  inset: auto 1.25rem 1.25rem auto;
+  margin: 0;
+  padding: 0.75rem 0.95rem;
+  width: min(380px, calc(100vw - 2rem));
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-accent);
+  border-inline-start: 4px solid var(--accent-bright);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.55);
+  pointer-events: auto;
+  display: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  transition: opacity 0.2s ease, transform 0.2s ease, display 0.2s ease, overlay 0.2s ease;
+  transition-behavior: allow-discrete;
+}
+
+.toast-item[popover]:is(:popover-open, .\:popover-open) {
+  display: flex;
+}
+
+.toast-item.toast-success {
+  border-inline-start-color: var(--status-online);
+}
+
+.toast-item.toast-error {
+  border-inline-start-color: var(--status-danger);
+}
+
+.toast-item.toast-warn {
+  border-inline-start-color: var(--status-warn);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-item[popover] {
+    transition: none;
+  }
+}
+
+/* ---------- Status Badges (Icon + Text + Color) ---------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.58rem;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.badge-online {
+  color: var(--status-online);
+  background: var(--status-online-bg);
+  border-color: color-mix(in oklab, var(--status-online), transparent 55%);
+}
+
+.badge-warn {
+  color: var(--status-warn);
+  background: var(--status-warn-bg);
+  border-color: color-mix(in oklab, var(--status-warn), transparent 55%);
+}
+
+.badge-offline {
+  color: var(--status-offline);
+  background: var(--status-offline-bg);
+  border-color: color-mix(in oklab, var(--status-offline), transparent 55%);
+}
+
+.badge-danger {
+  color: var(--status-danger);
+  background: var(--status-danger-bg);
+  border-color: color-mix(in oklab, var(--status-danger), transparent 55%);
+}
+
+.badge-accent {
+  color: var(--accent-bright);
+  background: var(--bg-accent-tint);
+  border-color: var(--accent-deep);
+}
+
+.badge-neutral {
+  color: var(--text-secondary);
+  background: var(--bg-surface-subtle);
+  border-color: var(--border-subtle);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}

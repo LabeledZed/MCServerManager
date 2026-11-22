@@ -1,0 +1,85 @@
+/* MCServerManager Design Tokens — Exact Requested 5-Color Industrial Palette + Barlow (DIN/Bahnschrift) */
+
+:root {
+  color-scheme: dark;
+
+  /* Requested 5 Core Colors */
+  --palette-dark: #1a1a1a;
+  --palette-slate: #2c2e2d;
+  --palette-teal-deep: #247083;
+  --palette-teal-mid: #2c89a0;
+  --palette-cyan-bright: #37abc8;
+
+  /* Surfaces (derived safely with oklab — never oklch with neutrals) */
+  --bg-canvas: var(--palette-dark);
+  --bg-surface: var(--palette-slate);
+  --bg-surface-elevated: color-mix(in oklab, var(--palette-slate), white 5%);
+  --bg-surface-subtle: color-mix(in oklab, var(--palette-dark), var(--palette-slate) 55%);
+  --bg-surface-hover: color-mix(in oklab, var(--palette-slate), var(--palette-cyan-bright) 10%);
+  --bg-accent-tint: color-mix(in oklab, var(--palette-dark), var(--palette-teal-deep) 28%);
+  --bg-accent-tint-strong: color-mix(in oklab, var(--palette-dark), var(--palette-teal-mid) 36%);
+
+  /* Accents */
+  --accent-deep: var(--palette-teal-deep);
+  --accent-mid: var(--palette-teal-mid);
+  --accent-bright: var(--palette-cyan-bright);
+
+  /* Text (>= 4.5:1 contrast on #1a1a1a and #2c2e2d) */
+  --text-primary: #edf3f4;
+  --text-secondary: #b7c6c9;
+  --text-muted: #93a7ac;
+  --text-on-accent: #ffffff;
+
+  /* Borders (>= 3:1 non-text contrast for form controls & boundaries) */
+  --border-subtle: #444947;
+  --border-control: #687370;
+  --border-accent: var(--palette-teal-deep);
+  --border-focus: var(--palette-cyan-bright);
+
+  /* Status tokens (always paired with icon + text label) */
+  --status-online: #34d399;
+  --status-online-bg: color-mix(in oklab, var(--palette-dark), #34d399 16%);
+  --status-warn: #fbbf24;
+  --status-warn-bg: color-mix(in oklab, var(--palette-dark), #fbbf24 16%);
+  --status-offline: #94a3b8;
+  --status-offline-bg: color-mix(in oklab, var(--palette-dark), #94a3b8 14%);
+  --status-danger: #f87171;
+  --status-danger-bg: color-mix(in oklab, var(--palette-dark), #f87171 18%);
+
+  /* Scrollbars (>= 3:1 thumb contrast against both track and container) */
+  --scrollbar-thumb: #6f8084;
+  --scrollbar-track: #1a1a1a;
+
+  /* Typography — Barlow & Barlow Semi Condensed (Open-Source DIN / Bahnschrift equivalents) */
+  --font-sans: 'Barlow', 'Bahnschrift', 'DIN Alternate', system-ui, -apple-system, sans-serif;
+  --font-display: 'Barlow Semi Condensed', 'Barlow', 'Bahnschrift', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* Layout */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --sidebar-width: 260px;
+  --topbar-height: 58px;
+
+  accent-color: var(--accent-bright);
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border-subtle: #8fa3a8;
+    --border-control: #b7c6c9;
+    --text-secondary: #d7e3e6;
+    --text-muted: #c1d1d5;
+    --scrollbar-thumb: #ffffff;
+    --scrollbar-track: #000000;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --border-subtle: CanvasText;
+    --border-control: CanvasText;
+    --border-focus: Highlight;
+  }
+}
