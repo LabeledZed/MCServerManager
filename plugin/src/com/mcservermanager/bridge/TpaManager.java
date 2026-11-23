@@ -19,7 +19,6 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginIdentifiableCommand;
-import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
@@ -29,7 +28,7 @@ import org.bukkit.plugin.PluginManager;
  * and persistent /back with per-list teleport permission enforcement, clickable chat buttons,
  * request sound, teleport particles, and expiration notifications.
  */
-public final class TpaManager implements CommandExecutor, TabCompleter {
+public final class TpaManager implements CommandExecutor {
 
     public static final class TpaRequest {
         public final UUID senderId;
@@ -236,7 +235,7 @@ public final class TpaManager implements CommandExecutor, TabCompleter {
             Method m = Bukkit.getServer().getClass().getMethod("syncCommands");
             m.invoke(Bukkit.getServer());
         } catch (Throwable ignored) {}
-        for (Player p : Bukkit.getOnlinePlayers()) {
+        for (Player p : BukkitCompat.getOnlinePlayers()) {
             try {
                 p.getClass().getMethod("updateCommands").invoke(p);
             } catch (Throwable ignored) {}
@@ -404,7 +403,7 @@ public final class TpaManager implements CommandExecutor, TabCompleter {
         int timeoutSec = Math.max(10, Math.min(300, cfg.tpaTimeoutSeconds));
         int sentCount = 0;
 
-        for (Player target : Bukkit.getOnlinePlayers()) {
+        for (Player target : BukkitCompat.getOnlinePlayers()) {
             if (target == null || target.getUniqueId().equals(sender.getUniqueId())) continue;
             RealmsConfig.WorldGroup targetGroup = cfg.findGroupForPlayer(target);
 
@@ -584,14 +583,14 @@ public final class TpaManager implements CommandExecutor, TabCompleter {
     private static Player findOnlinePlayer(String name) {
         Player exact = Bukkit.getPlayerExact(name);
         if (exact != null) return exact;
-        for (Player p : Bukkit.getOnlinePlayers()) {
+        for (Player p : BukkitCompat.getOnlinePlayers()) {
             if (p.getName().equalsIgnoreCase(name)) return p;
         }
         return null;
     }
 
     private static Player findOnlinePlayerByUuid(UUID uuid) {
-        for (Player p : Bukkit.getOnlinePlayers()) {
+        for (Player p : BukkitCompat.getOnlinePlayers()) {
             if (p.getUniqueId().equals(uuid)) return p;
         }
         return null;
@@ -686,12 +685,21 @@ public final class TpaManager implements CommandExecutor, TabCompleter {
         if (effectsInitialized) return;
         effectsInitialized = true;
 
-        // Sound: ENTITY_EXPERIENCE_ORB_PICKUP (works on both enum Sound <=1.21.2 and interface Sound 1.21.3-26.3+)
+        // Sound: ENTITY_EXPERIENCE_ORB_PICKUP (1.9-26.3+) or ORB_PICKUP (1.4-1.8.8)
         try {
             Class<?> soundCls = Class.forName("org.bukkit.Sound");
-            Field f = soundCls.getField("ENTITY_EXPERIENCE_ORB_PICKUP");
-            pickupSoundObj = f.get(null);
-            playSoundEnumMethod = Player.class.getMethod("playSound", Location.class, soundCls, float.class, float.class);
+            Field f = null;
+            try {
+                f = soundCls.getField("ENTITY_EXPERIENCE_ORB_PICKUP");
+            } catch (NoSuchFieldException ignored) {
+                try {
+                    f = soundCls.getField("ORB_PICKUP");
+                } catch (NoSuchFieldException ignored2) {}
+            }
+            if (f != null) {
+                pickupSoundObj = f.get(null);
+                playSoundEnumMethod = Player.class.getMethod("playSound", Location.class, soundCls, float.class, float.class);
+            }
         } catch (Throwable ignored) {}
         try {
             playSoundStringMethod = Player.class.getMethod("playSound", Location.class, String.class, float.class, float.class);
@@ -760,7 +768,6 @@ public final class TpaManager implements CommandExecutor, TabCompleter {
         } catch (Throwable ignored) {}
     }
 
-    @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (!(sender instanceof Player) || args.length != 1) {
             return Collections.emptyList();
@@ -780,7 +787,7 @@ public final class TpaManager implements CommandExecutor, TabCompleter {
         if ("tpa".equals(cmd) || "tpahere".equals(cmd)) {
             RealmsConfig cfg = plugin.getRealmsConfig();
             RealmsConfig.WorldGroup senderGroup = cfg.findGroupForPlayer(player);
-            for (Player p : Bukkit.getOnlinePlayers()) {
+            for (Player p : BukkitCompat.getOnlinePlayers()) {
                 if (p.getUniqueId().equals(player.getUniqueId())) continue;
                 RealmsConfig.WorldGroup targetGroup = cfg.findGroupForPlayer(p);
                 if (cfg.canGroupsExchangeTpa(senderGroup, targetGroup)

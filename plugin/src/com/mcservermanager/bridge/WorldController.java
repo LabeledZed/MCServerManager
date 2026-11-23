@@ -251,7 +251,9 @@ public final class WorldController {
         WorldCreator creator = buildCompatibleWorldCreator(cfg.name);
         creator.environment(parseEnvironment(cfg.environment));
         creator.type(parseWorldType(cfg.worldType));
-        creator.generateStructures(cfg.generateStructures);
+        try {
+            creator.generateStructures(cfg.generateStructures);
+        } catch (Throwable ignored) {}
 
         if (cfg.seed != null && !cfg.seed.trim().isEmpty()) {
             creator.seed(parseSeed(cfg.seed.trim()));

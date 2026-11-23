@@ -4,6 +4,9 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import {
   BRIDGE_FABRIC_JAR_ASSET,
+  BRIDGE_FORGE_14_16_JAR_ASSET,
+  BRIDGE_FORGE_17_JAR_ASSET,
+  BRIDGE_FORGE_18_112_JAR_ASSET,
   BRIDGE_FORGE_JAR_ASSET,
   BRIDGE_JAR_ASSET,
   BRIDGE_NEOFORGE_JAR_ASSET,
@@ -40,6 +43,9 @@ const ALL_BRIDGE_JAR_TARGETS: Array<{ addonDir: 'plugins' | 'mods'; jarFileName:
   { addonDir: 'mods', jarFileName: 'MCServerManagerBridge-Fabric.jar' },
   { addonDir: 'mods', jarFileName: 'MCServerManagerBridge-NeoForge.jar' },
   { addonDir: 'mods', jarFileName: 'MCServerManagerBridge-Forge.jar' },
+  { addonDir: 'mods', jarFileName: 'MCServerManagerBridge-Forge-1.8-1.12.jar' },
+  { addonDir: 'mods', jarFileName: 'MCServerManagerBridge-Forge-1.7.jar' },
+  { addonDir: 'mods', jarFileName: 'MCServerManagerBridge-Forge-1.4-1.6.jar' },
 ];
 
 export async function removeStaleBridgeJars(
@@ -67,7 +73,19 @@ export interface BridgePlatformSpec {
   supportsRealms: boolean;
 }
 
-export function getBridgePlatformSpec(software: ServerSoftware): BridgePlatformSpec | null {
+function parseMcVersionParts(mcVersion?: string): { major: number; minor: number; patch: number } | null {
+  if (!mcVersion) return null;
+  const m = mcVersion.trim().match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (!m) return null;
+  return {
+    major: parseInt(m[1], 10) || 0,
+    minor: parseInt(m[2], 10) || 0,
+    patch: parseInt(m[3] || '0', 10) || 0,
+  };
+}
+
+export function getBridgePlatformSpec(software: ServerSoftware, mcVersion?: string): BridgePlatformSpec | null {
+  const ver = parseMcVersionParts(mcVersion);
   switch (software) {
     case 'paper':
     case 'purpur':
@@ -99,6 +117,16 @@ export function getBridgePlatformSpec(software: ServerSoftware): BridgePlatformS
         supportsRealms: false,
       };
     case 'neoforge':
+      // NeoForge 1.20.1 (47.1.x) used the net.minecraftforge package & mods.toml
+      if (ver && ver.major === 1 && ver.minor === 20 && ver.patch === 1) {
+        return {
+          assetPath: BRIDGE_FORGE_JAR_ASSET,
+          addonDir: 'mods',
+          jarFileName: 'MCServerManagerBridge-Forge.jar',
+          configSubDir: path.join('config', 'mcservermanagerbridge'),
+          supportsRealms: false,
+        };
+      }
       return {
         assetPath: BRIDGE_NEOFORGE_JAR_ASSET,
         addonDir: 'mods',
@@ -107,6 +135,33 @@ export function getBridgePlatformSpec(software: ServerSoftware): BridgePlatformS
         supportsRealms: false,
       };
     case 'forge':
+      if (ver && ver.major === 1 && ver.minor >= 3 && ver.minor <= 6) {
+        return {
+          assetPath: BRIDGE_FORGE_14_16_JAR_ASSET,
+          addonDir: 'mods',
+          jarFileName: 'MCServerManagerBridge-Forge-1.4-1.6.jar',
+          configSubDir: path.join('config', 'mcservermanagerbridge'),
+          supportsRealms: false,
+        };
+      }
+      if (ver && ver.major === 1 && ver.minor === 7) {
+        return {
+          assetPath: BRIDGE_FORGE_17_JAR_ASSET,
+          addonDir: 'mods',
+          jarFileName: 'MCServerManagerBridge-Forge-1.7.jar',
+          configSubDir: path.join('config', 'mcservermanagerbridge'),
+          supportsRealms: false,
+        };
+      }
+      if (ver && ver.major === 1 && ver.minor >= 8 && ver.minor <= 12) {
+        return {
+          assetPath: BRIDGE_FORGE_18_112_JAR_ASSET,
+          addonDir: 'mods',
+          jarFileName: 'MCServerManagerBridge-Forge-1.8-1.12.jar',
+          configSubDir: path.join('config', 'mcservermanagerbridge'),
+          supportsRealms: false,
+        };
+      }
       return {
         assetPath: BRIDGE_FORGE_JAR_ASSET,
         addonDir: 'mods',
@@ -142,17 +197,21 @@ function allocateBridgePort(server: ServerConfig): number {
   return candidate;
 }
 
-export function isBridgeJarPresent(serverId: string, software?: ServerSoftware): boolean {
-  const resolvedSoftware = software || store.getServer(serverId)?.software || 'paper';
-  const spec = getBridgePlatformSpec(resolvedSoftware);
+export function isBridgeJarPresent(serverId: string, software?: ServerSoftware, mcVersion?: string): boolean {
+  const stored = store.getServer(serverId);
+  const resolvedSoftware = software || stored?.software || 'paper';
+  const resolvedMcVersion = mcVersion ?? stored?.mcVersion;
+  const spec = getBridgePlatformSpec(resolvedSoftware, resolvedMcVersion);
   if (!spec) return false;
   const jarPath = path.join(getServerDir(serverId), spec.addonDir, spec.jarFileName);
   return fsSync.existsSync(jarPath);
 }
 
-export function needsBridgeJarUpdate(serverId: string, software?: ServerSoftware): boolean {
-  const resolvedSoftware = software || store.getServer(serverId)?.software || 'paper';
-  const spec = getBridgePlatformSpec(resolvedSoftware);
+export function needsBridgeJarUpdate(serverId: string, software?: ServerSoftware, mcVersion?: string): boolean {
+  const stored = store.getServer(serverId);
+  const resolvedSoftware = software || stored?.software || 'paper';
+  const resolvedMcVersion = mcVersion ?? stored?.mcVersion;
+  const spec = getBridgePlatformSpec(resolvedSoftware, resolvedMcVersion);
   if (!spec || !fsSync.existsSync(spec.assetPath)) return false;
   const installedPath = path.join(getServerDir(serverId), spec.addonDir, spec.jarFileName);
   if (!fsSync.existsSync(installedPath)) return true;
@@ -169,7 +228,7 @@ export function needsBridgeJarUpdate(serverId: string, software?: ServerSoftware
  * Installs or refreshes the platform-specific MCServerManagerBridge JAR + its loopback bridge.properties secret.
  */
 export async function installBridgePlugin(server: ServerConfig): Promise<{ port: number }> {
-  const spec = getBridgePlatformSpec(server.software);
+  const spec = getBridgePlatformSpec(server.software, server.mcVersion);
   if (!spec) {
     throw new Error(`Server platform "${server.software}" does not support a companion bridge plugin/mod.`);
   }
@@ -259,7 +318,7 @@ async function bridgeRequest<T>(
 
 export async function getBridgeStatus(server: ServerConfig): Promise<BridgeStatusResponse> {
   const supported = supportsBridgePlugin(server.software);
-  const installed = supported && isBridgeJarPresent(server.id, server.software);
+  const installed = supported && isBridgeJarPresent(server.id, server.software, server.mcVersion);
   const enabled = Boolean(server.bridgeEnabled);
 
   if (!supported || !installed || !enabled || !server.bridgePort || !server.bridgeToken) {
@@ -628,7 +687,7 @@ async function discoverOfflineWorldNames(serverDir: string, is26Plus: boolean): 
 
 export async function getRealmsState(server: ServerConfig): Promise<RealmsStateResponse> {
   const supported = supportsRealmsEngine(server.software);
-  const installed = supported && isBridgeJarPresent(server.id, server.software);
+  const installed = supported && isBridgeJarPresent(server.id, server.software, server.mcVersion);
   const is26Plus = isMcVersion26OrNewer(server.mcVersion);
   const diskConfig = await readRealmsConfigFromDisk(server.id);
 

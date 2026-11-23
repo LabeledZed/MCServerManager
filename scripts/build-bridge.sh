@@ -76,7 +76,7 @@ echo "Building all MCServerManagerBridge platform JARs using $JAVAC_BIN..."
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR" "$ASSETS_DIR"
 
-# 1. Spigot / Paper / Purpur / Leaf / Folia / Custom
+# 1. Spigot / Paper / Purpur / Leaf / Folia / CraftBukkit / Custom (MC 1.2.5 - 26.3+)
 build_bridge_jar \
   "spigot-folia" \
   "MCServerManagerBridge.jar" \
@@ -85,48 +85,81 @@ build_bridge_jar \
   "$PLUGIN_ROOT/src" \
   "$PLUGIN_ROOT/resources"
 
-# 2. Velocity Proxy
+# 2. Velocity Proxy (1.1 - 3.x+, Java 8+)
 build_bridge_jar \
   "velocity" \
   "MCServerManagerBridge-Velocity.jar" \
-  "17" \
+  "8" \
   "$PLATFORMS_ROOT/velocity/stubs" \
   "$PLATFORMS_ROOT/velocity/src" \
   "$PLATFORMS_ROOT/velocity/resources" \
   "$JSON_UTIL_SRC"
 
-# 3. Fabric Mod
+# 3. Fabric & Legacy Fabric Mod (MC 1.7.10 - 26.3+, Java 8+)
 build_bridge_jar \
   "fabric" \
   "MCServerManagerBridge-Fabric.jar" \
-  "17" \
+  "8" \
   "$PLATFORMS_ROOT/fabric/stubs" \
   "$PLATFORMS_ROOT/fabric/src" \
   "$PLATFORMS_ROOT/fabric/resources" \
   "$JSON_UTIL_SRC" \
   "$MOD_COMMON_SRC"
 
-# 4. NeoForge Mod
+# 4. NeoForge Mod (MC 1.20.2 - 26.3+, Java 8+)
 build_bridge_jar \
   "neoforge" \
   "MCServerManagerBridge-NeoForge.jar" \
-  "17" \
+  "8" \
   "$PLATFORMS_ROOT/neoforge/stubs" \
   "$PLATFORMS_ROOT/neoforge/src" \
   "$PLATFORMS_ROOT/neoforge/resources" \
   "$JSON_UTIL_SRC" \
   "$MOD_COMMON_SRC"
 
-# 5. Forge Mod
+# 5. Modern Forge Mod (MC 1.13.2 - 26.3+ & NeoForge 1.20.1, Java 8+)
 build_bridge_jar \
   "forge" \
   "MCServerManagerBridge-Forge.jar" \
-  "17" \
+  "8" \
   "$PLATFORMS_ROOT/forge/stubs" \
   "$PLATFORMS_ROOT/forge/src" \
   "$PLATFORMS_ROOT/forge/resources" \
   "$JSON_UTIL_SRC" \
   "$MOD_COMMON_SRC"
 
+# 6. Legacy Forge Mod (MC 1.8 - 1.12.2, Java 8+)
+build_bridge_jar \
+  "forge-1.8-1.12" \
+  "MCServerManagerBridge-Forge-1.8-1.12.jar" \
+  "8" \
+  "$PLATFORMS_ROOT/forge-1.8-1.12/stubs" \
+  "$PLATFORMS_ROOT/forge-1.8-1.12/src" \
+  "$PLATFORMS_ROOT/forge-1.8-1.12/resources" \
+  "$JSON_UTIL_SRC" \
+  "$MOD_COMMON_SRC"
+
+# 7. Classic Forge Mod (MC 1.7.2 - 1.7.10, Java 8+)
+build_bridge_jar \
+  "forge-1.7" \
+  "MCServerManagerBridge-Forge-1.7.jar" \
+  "8" \
+  "$PLATFORMS_ROOT/forge-1.7/stubs" \
+  "$PLATFORMS_ROOT/forge-1.7/src" \
+  "$PLATFORMS_ROOT/forge-1.7/resources" \
+  "$JSON_UTIL_SRC" \
+  "$MOD_COMMON_SRC"
+
+# 8. Ancient Forge Mod (MC 1.3.2 - 1.6.4, Java 8+)
+build_bridge_jar \
+  "forge-1.4-1.6" \
+  "MCServerManagerBridge-Forge-1.4-1.6.jar" \
+  "8" \
+  "$PLATFORMS_ROOT/forge-1.4-1.6/stubs" \
+  "$PLATFORMS_ROOT/forge-1.4-1.6/src" \
+  "$PLATFORMS_ROOT/forge-1.4-1.6/resources" \
+  "$JSON_UTIL_SRC" \
+  "$MOD_COMMON_SRC"
+
 rm -rf "$BUILD_DIR"
-echo "All 5 MCServerManagerBridge platform JARs built successfully."
+echo "All 8 MCServerManagerBridge platform JARs built successfully."

@@ -23,10 +23,12 @@ public final class NeoForgeBridgeMod {
             System.out::println
         );
         Runtime.getRuntime().addShutdownHook(new Thread(bridge::stop, "MCServerManagerBridge-Shutdown"));
-        registerLifecycleListeners();
+        if (!registerLifecycleListeners()) {
+            startServerLifecycleHooksWatcher();
+        }
     }
 
-    private void registerLifecycleListeners() {
+    private boolean registerLifecycleListeners() {
         try {
             Class<?> neoForgeCls = Class.forName("net.neoforged.neoforge.common.NeoForge");
             Field busField = neoForgeCls.getField("EVENT_BUS");
@@ -44,9 +46,34 @@ public final class NeoForgeBridgeMod {
             Consumer<Object> onStop = evt -> bridge.stop();
             registerBusEvent(eventBus, startedCls, onStart, "net.neoforged.bus.api.EventPriority");
             registerBusEvent(eventBus, stoppingCls, onStop, "net.neoforged.bus.api.EventPriority");
+            return true;
         } catch (Throwable ex) {
-            System.out.println("[MCServerManagerBridge] NeoForge event registration error: " + ex.getMessage());
+            System.out.println("[MCServerManagerBridge] NeoForge event registration fallback: " + ex.getMessage());
+            return false;
         }
+    }
+
+    private void startServerLifecycleHooksWatcher() {
+        Thread watcher = new Thread(() -> {
+            for (int i = 0; i < 240; i++) {
+                try {
+                    if (bridge.isStarted()) return;
+                    Class<?> hooks = Class.forName("net.neoforged.neoforge.server.ServerLifecycleHooks");
+                    Object srv = hooks.getMethod("getCurrentServer").invoke(null);
+                    if (srv != null) {
+                        bridge.attachAndStart(srv);
+                        return;
+                    }
+                    Thread.sleep(500L);
+                } catch (InterruptedException ex) {
+                    return;
+                } catch (Throwable ignored) {
+                    try { Thread.sleep(500L); } catch (InterruptedException ie) { return; }
+                }
+            }
+        }, "MCServerManagerBridge-NeoForgeWatcher");
+        watcher.setDaemon(true);
+        watcher.start();
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

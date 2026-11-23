@@ -24,7 +24,6 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockEvent;
 import org.bukkit.event.entity.EntityEvent;
-import org.bukkit.event.hanging.HangingEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerEvent;
 import org.bukkit.event.vehicle.VehicleEvent;
@@ -243,7 +242,7 @@ public final class PluginScopeManager {
     }
 
     public void refreshAllOnlinePlayersCommands() {
-        for (Player p : Bukkit.getOnlinePlayers()) {
+        for (Player p : BukkitCompat.getOnlinePlayers()) {
             refreshPlayerCommands(p);
         }
     }
@@ -324,10 +323,6 @@ public final class PluginScopeManager {
         if (event instanceof VehicleEvent) {
             Entity v = ((VehicleEvent) event).getVehicle();
             return v != null ? v.getWorld() : null;
-        }
-        if (event instanceof HangingEvent) {
-            Entity h = ((HangingEvent) event).getEntity();
-            return h != null ? h.getWorld() : null;
         }
         if (event instanceof WeatherEvent) {
             return ((WeatherEvent) event).getWorld();

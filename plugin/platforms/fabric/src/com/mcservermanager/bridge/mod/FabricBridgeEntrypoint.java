@@ -4,6 +4,7 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -17,7 +18,7 @@ public final class FabricBridgeEntrypoint implements DedicatedServerModInitializ
 
     @Override
     public void onInitializeServer() {
-        File configDir = FabricLoader.getInstance().getConfigDir().toFile();
+        File configDir = resolveConfigDir();
         this.bridge = new ReflectiveMinecraftServerBridge(
             "Fabric",
             configDir,
@@ -29,10 +30,32 @@ public final class FabricBridgeEntrypoint implements DedicatedServerModInitializ
             if (bridge != null) bridge.stop();
         }, "MCServerManagerBridge-Shutdown"));
 
-        boolean hookedFabricApi = tryHookFabricLifecycleEvents();
-        if (!hookedFabricApi) {
+        boolean hooked = tryHookFabricLifecycleEvents();
+        if (!hooked) {
+            hooked = tryHookLegacyFabricServerCallbacks();
+        }
+        if (!hooked) {
             startGameInstanceWatcher();
         }
+    }
+
+    private static File resolveConfigDir() {
+        FabricLoader loader = FabricLoader.getInstance();
+        // Fabric Loader 0.9+: getConfigDir() -> Path
+        try {
+            Method m = loader.getClass().getMethod("getConfigDir");
+            Object res = m.invoke(loader);
+            if (res instanceof Path) return ((Path) res).toFile();
+            if (res instanceof File) return (File) res;
+        } catch (Throwable ignored) {}
+        // Fabric Loader 0.4 - 0.8: getConfigDirectory() -> File
+        try {
+            Method m = loader.getClass().getMethod("getConfigDirectory");
+            Object res = m.invoke(loader);
+            if (res instanceof File) return (File) res;
+            if (res instanceof Path) return ((Path) res).toFile();
+        } catch (Throwable ignored) {}
+        return new File("config");
     }
 
     private boolean tryHookFabricLifecycleEvents() {
@@ -75,10 +98,49 @@ public final class FabricBridgeEntrypoint implements DedicatedServerModInitializ
         }
     }
 
+    /**
+     * Fabric API 1.14 - 1.15 legacy callback hook (ServerStartCallback / ServerStopCallback).
+     */
+    private boolean tryHookLegacyFabricServerCallbacks() {
+        try {
+            Class<?> startCls = Class.forName("net.fabricmc.fabric.api.event.server.ServerStartCallback");
+            Object startEvent = startCls.getField("EVENT").get(null);
+            Object startProxy = Proxy.newProxyInstance(
+                startCls.getClassLoader(),
+                new Class<?>[]{startCls},
+                (proxy, method, args) -> {
+                    if (args != null && args.length == 1 && args[0] != null) {
+                        bridge.attachAndStart(args[0]);
+                    }
+                    return null;
+                }
+            );
+            startEvent.getClass().getMethod("register", Object.class).invoke(startEvent, startProxy);
+
+            try {
+                Class<?> stopCls = Class.forName("net.fabricmc.fabric.api.event.server.ServerStopCallback");
+                Object stopEvent = stopCls.getField("EVENT").get(null);
+                Object stopProxy = Proxy.newProxyInstance(
+                    stopCls.getClassLoader(),
+                    new Class<?>[]{stopCls},
+                    (proxy, method, args) -> {
+                        bridge.stop();
+                        return null;
+                    }
+                );
+                stopEvent.getClass().getMethod("register", Object.class).invoke(stopEvent, stopProxy);
+            } catch (Throwable ignored) {}
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     private void startGameInstanceWatcher() {
         Thread watcher = new Thread(() -> {
             for (int i = 0; i < 240; i++) {
                 try {
+                    if (bridge.isStarted()) return;
                     @SuppressWarnings("deprecation")
                     Object game = FabricLoader.getInstance().getGameInstance();
                     if (game != null) {
@@ -97,16 +159,18 @@ public final class FabricBridgeEntrypoint implements DedicatedServerModInitializ
 
     private static List<ReflectiveMinecraftServerBridge.ModEntry> listLoadedMods() {
         List<ReflectiveMinecraftServerBridge.ModEntry> list = new ArrayList<>();
-        for (ModContainer c : FabricLoader.getInstance().getAllMods()) {
-            ModMetadata meta = c.getMetadata();
-            String id = meta.getId();
-            if ("java".equals(id) || "minecraft".equals(id) || "fabricloader".equals(id)) continue;
-            list.add(new ReflectiveMinecraftServerBridge.ModEntry(
-                meta.getName() != null && !meta.getName().isEmpty() ? meta.getName() : id,
-                meta.getVersion() != null ? meta.getVersion().getFriendlyString() : "",
-                true
-            ));
-        }
+        try {
+            for (ModContainer c : FabricLoader.getInstance().getAllMods()) {
+                ModMetadata meta = c.getMetadata();
+                String id = meta.getId();
+                if ("java".equals(id) || "minecraft".equals(id) || "fabricloader".equals(id)) continue;
+                list.add(new ReflectiveMinecraftServerBridge.ModEntry(
+                    meta.getName() != null && !meta.getName().isEmpty() ? meta.getName() : id,
+                    meta.getVersion() != null ? meta.getVersion().getFriendlyString() : "",
+                    true
+                ));
+            }
+        } catch (Throwable ignored) {}
         return list;
     }
 }

@@ -163,16 +163,26 @@ export function GameControlPage({ server, onNotify }: GameControlPageProps) {
   const isModBridge = ['fabric', 'forge', 'neoforge'].includes(server.software);
   const bridgeKindLabel = isModBridge ? 'Mod' : 'Plugin';
   const bridgeDirLabel = isModBridge ? '/mods/' : '/plugins/';
-  const bridgeJarLabel =
-    server.software === 'fabric'
-      ? 'MCServerManagerBridge-Fabric.jar'
-      : server.software === 'neoforge'
-        ? 'MCServerManagerBridge-NeoForge.jar'
-        : server.software === 'forge'
-          ? 'MCServerManagerBridge-Forge.jar'
-          : server.software === 'velocity'
-            ? 'MCServerManagerBridge-Velocity.jar'
-            : 'MCServerManagerBridge.jar';
+  const bridgeJarLabel = useMemo(() => {
+    const m = (server.mcVersion || '').trim().match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
+    const maj = m ? parseInt(m[1], 10) : 0;
+    const min = m ? parseInt(m[2], 10) : 0;
+    const pat = m && m[3] ? parseInt(m[3], 10) : 0;
+    if (server.software === 'fabric') return 'MCServerManagerBridge-Fabric.jar';
+    if (server.software === 'neoforge') {
+      return maj === 1 && min === 20 && pat === 1
+        ? 'MCServerManagerBridge-Forge.jar'
+        : 'MCServerManagerBridge-NeoForge.jar';
+    }
+    if (server.software === 'forge') {
+      if (maj === 1 && min >= 3 && min <= 6) return 'MCServerManagerBridge-Forge-1.4-1.6.jar';
+      if (maj === 1 && min === 7) return 'MCServerManagerBridge-Forge-1.7.jar';
+      if (maj === 1 && min >= 8 && min <= 12) return 'MCServerManagerBridge-Forge-1.8-1.12.jar';
+      return 'MCServerManagerBridge-Forge.jar';
+    }
+    if (server.software === 'velocity') return 'MCServerManagerBridge-Velocity.jar';
+    return 'MCServerManagerBridge.jar';
+  }, [server.software, server.mcVersion]);
 
   const handleInstallBridge = async () => {
     setInstalling(true);

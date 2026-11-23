@@ -30,7 +30,6 @@ import org.bukkit.Difficulty;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.WorldBorder;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -54,6 +53,14 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
     private PluginScopeManager pluginScopeManager;
     private TpaManager tpaManager;
     private RealmsListener realmsListener;
+
+    // Fallback rolling TPS sampler for servers without Bukkit.getTPS() or Spigot recentTps (e.g. CraftBukkit 1.2.5-1.7.10)
+    private Object fallbackTpsTask;
+    private volatile long lastTpsSampleNanos = 0L;
+    private volatile double fallbackTps1m = 20.0;
+    private volatile double fallbackTps5m = 20.0;
+    private volatile double fallbackTps15m = 20.0;
+    private volatile boolean fallbackTpsActive = false;
 
     public RealmsConfig getRealmsConfig() {
         return realmsConfig;
@@ -79,7 +86,32 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
         );
 
         Bukkit.getPluginManager().registerEvents(this.realmsListener, this);
+        BukkitCompat.registerChatListener(this, this.realmsListener, new BukkitCompat.ChatRecipientsHandler() {
+            @Override
+            public void filterChat(Player sender, Collection<Player> recipients) {
+                realmsListener.handleChatRecipients(sender, recipients);
+            }
+        });
         this.pluginScopeManager.registerCommandSendHook(this.realmsListener);
+
+        if (!FoliaCompat.isFolia() && BukkitCompat.readNativeTps() == null) {
+            this.lastTpsSampleNanos = System.nanoTime();
+            this.fallbackTpsActive = true;
+            this.fallbackTpsTask = FoliaCompat.runGlobalTimer(this, new Runnable() {
+                @Override
+                public void run() {
+                    long now = System.nanoTime();
+                    long elapsed = now - lastTpsSampleNanos;
+                    lastTpsSampleNanos = now;
+                    if (elapsed > 0L) {
+                        double instant = Math.min(20.0, (20.0 * 1_000_000_000.0) / (double) elapsed);
+                        fallbackTps1m = fallbackTps1m * (59.0 / 60.0) + instant * (1.0 / 60.0);
+                        fallbackTps5m = fallbackTps5m * (299.0 / 300.0) + instant * (1.0 / 300.0);
+                        fallbackTps15m = fallbackTps15m * (899.0 / 900.0) + instant * (1.0 / 900.0);
+                    }
+                }
+            }, 20L, 20L);
+        }
 
         PluginCommand mvCmd = getCommand("mv");
         if (mvCmd != null) {
@@ -150,6 +182,11 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (fallbackTpsTask != null) {
+            FoliaCompat.cancelTask(fallbackTpsTask);
+            fallbackTpsTask = null;
+            fallbackTpsActive = false;
+        }
         if (tpaManager != null) {
             tpaManager.stopExpirationTask();
             tpaManager.unregisterAllCommands();
@@ -159,7 +196,7 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
             portalManager.savePortals();
         }
         if (profileManager != null) {
-            for (Player p : Bukkit.getOnlinePlayers()) {
+            for (Player p : BukkitCompat.getOnlinePlayers()) {
                 profileManager.saveCurrentProfile(p, realmsConfig);
             }
         }
@@ -592,11 +629,7 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
         List<Object> out = new ArrayList<>();
         for (World w : Bukkit.getWorlds()) {
             String weather = w.isThundering() ? "thunder" : (w.hasStorm() ? "rain" : "clear");
-            double borderSize = 0;
-            try {
-                WorldBorder wb = w.getWorldBorder();
-                if (wb != null) borderSize = wb.getSize();
-            } catch (Throwable ignored) {}
+            double borderSize = BukkitCompat.getWorldBorderSize(w);
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("name", WorldController.getCanonicalWorldName(w));
             m.put("environment", w.getEnvironment() != null ? w.getEnvironment().name() : "NORMAL");
@@ -616,7 +649,7 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
 
     private List<Object> buildPlayersList() {
         List<Object> out = new ArrayList<>();
-        for (Player p : Bukkit.getOnlinePlayers()) {
+        for (Player p : BukkitCompat.getOnlinePlayers()) {
             Location loc = p.getLocation();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("name", p.getName());
@@ -625,7 +658,7 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
             m.put("x", loc != null ? Math.round(loc.getX()) : 0);
             m.put("y", loc != null ? Math.round(loc.getY()) : 0);
             m.put("z", loc != null ? Math.round(loc.getZ()) : 0);
-            m.put("health", Math.round(p.getHealth() * 100.0) / 100.0);
+            m.put("health", Math.round(BukkitCompat.getHealth(p) * 100.0) / 100.0);
             m.put("maxHealth", Math.round(readPlayerMaxHealth(p) * 100.0) / 100.0);
             m.put("food", p.getFoodLevel());
             m.put("gamemode", p.getGameMode() != null ? p.getGameMode().name() : "SURVIVAL");
@@ -657,7 +690,7 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("ok", Boolean.TRUE);
         root.put("serverName", Bukkit.getName());
-        root.put("bukkitVersion", Bukkit.getBukkitVersion());
+        root.put("bukkitVersion", BukkitCompat.getBukkitVersionSafe());
         root.put("heapUsedMb", heapUsedMb);
         root.put("heapMaxMb", heapMaxMb);
         root.put("pluginCount", Bukkit.getPluginManager().getPlugins().length);
@@ -724,22 +757,24 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
         }
 
         if (!usedModernApi) {
-            String[] names = world.getGameRules();
-            if (names != null) {
-                for (String name : names) {
-                    String val = world.getGameRuleValue(name);
-                    if (val == null) continue;
-                    String kind = ("true".equalsIgnoreCase(val) || "false".equalsIgnoreCase(val))
-                            ? "boolean"
-                            : (val.matches("-?\\d+") ? "integer" : "string");
-                    Map<String, Object> r = new LinkedHashMap<>();
-                    r.put("name", name);
-                    r.put("value", val);
-                    r.put("type", kind);
-                    r.put("defaultValue", "");
-                    rows.add(r);
+            try {
+                String[] names = world.getGameRules();
+                if (names != null) {
+                    for (String name : names) {
+                        String val = world.getGameRuleValue(name);
+                        if (val == null) continue;
+                        String kind = ("true".equalsIgnoreCase(val) || "false".equalsIgnoreCase(val))
+                                ? "boolean"
+                                : (val.matches("-?\\d+") ? "integer" : "string");
+                        Map<String, Object> r = new LinkedHashMap<>();
+                        r.put("name", name);
+                        r.put("value", val);
+                        r.put("type", kind);
+                        r.put("defaultValue", "");
+                        rows.add(r);
+                    }
                 }
-            }
+            } catch (Throwable ignored) {}
         }
 
         Map<String, Object> root = new LinkedHashMap<>();
@@ -775,8 +810,12 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
             return "Invalid integer value for " + ruleName;
         } catch (Throwable ignored) {}
 
-        boolean ok = world.setGameRuleValue(ruleName, rawValue);
-        return ok ? null : "Could not apply gamerule " + ruleName;
+        try {
+            boolean ok = world.setGameRuleValue(ruleName, rawValue);
+            return ok ? null : "Could not apply gamerule " + ruleName;
+        } catch (Throwable ex) {
+            return "Gamerules are not supported on this Minecraft version";
+        }
     }
 
     private String applyWorldEnvironment(String worldName, Map<String, Object> body) {
@@ -816,10 +855,10 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
         if (body.containsKey("borderSize")) {
             try {
                 double size = JsonUtil.asDouble(body.get("borderSize"), -1.0);
-                if (size >= 1.0 && size <= 60000000.0 && world.getWorldBorder() != null) {
-                    world.getWorldBorder().setSize(size);
+                if (size >= 1.0 && size <= 60000000.0) {
+                    BukkitCompat.setWorldBorderSize(world, size);
                 }
-            } catch (Exception ex) {
+            } catch (Throwable ex) {
                 return "Invalid world border size";
             }
         }
@@ -849,7 +888,7 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
             }
             case "heal": {
                 double maxH = readPlayerMaxHealth(player);
-                player.setHealth(maxH);
+                BukkitCompat.setHealth(player, maxH);
                 player.setFoodLevel(20);
                 player.setSaturation(20.0f);
                 player.setFireTicks(0);
@@ -879,7 +918,7 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
             }
             case "xp": {
                 int levels = JsonUtil.asInt(body.get("value"), 0);
-                player.giveExpLevels(levels);
+                BukkitCompat.giveExpLevels(player, levels);
                 return null;
             }
             case "message": {
@@ -899,18 +938,12 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
         }
     }
 
-    private static double[] readTpsReflective() {
-        try {
-            Method m = Bukkit.class.getMethod("getTPS");
-            Object out = m.invoke(null);
-            if (out instanceof double[]) return (double[]) out;
-        } catch (Throwable ignored) {}
-        try {
-            Object srv = Bukkit.getServer();
-            Method m = srv.getClass().getMethod("getTPS");
-            Object out = m.invoke(srv);
-            if (out instanceof double[]) return (double[]) out;
-        } catch (Throwable ignored) {}
+    private double[] readTpsReflective() {
+        double[] nativeTps = BukkitCompat.readNativeTps();
+        if (nativeTps != null && nativeTps.length >= 3) return nativeTps;
+        if (fallbackTpsActive) {
+            return new double[]{fallbackTps1m, fallbackTps5m, fallbackTps15m};
+        }
         return null;
     }
 
@@ -920,15 +953,19 @@ public class MCServerManagerBridgePlugin extends JavaPlugin {
             Object out = m.invoke(p);
             if (out instanceof Number) return ((Number) out).intValue();
         } catch (Throwable ignored) {}
+        try {
+            Object handle = p.getClass().getMethod("getHandle").invoke(p);
+            if (handle != null) {
+                java.lang.reflect.Field f = handle.getClass().getField("ping");
+                Object out = f.get(handle);
+                if (out instanceof Number) return ((Number) out).intValue();
+            }
+        } catch (Throwable ignored) {}
         return -1;
     }
 
     private static double readPlayerMaxHealth(Player p) {
-        try {
-            return Math.max(1.0, p.getMaxHealth());
-        } catch (Throwable ignored) {
-            return 20.0;
-        }
+        return BukkitCompat.getMaxHealth(p);
     }
 
     private static int invokeArrayOrCollectionSize(Object target, String methodName) {

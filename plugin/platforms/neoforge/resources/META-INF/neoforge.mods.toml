@@ -4,7 +4,7 @@ license="MIT"
 
 [[mods]]
 modId="mcservermanagerbridge"
-version="2.2.0"
+version="2.3.0"
 displayName="MCServerManagerBridge"
 authors="MCServerManager"
-description='''Loopback management bridge for MCServerManager on NeoForge servers.'''
+description='''Loopback management bridge for MCServerManager on NeoForge servers (1.20.2 - 26.3+).'''

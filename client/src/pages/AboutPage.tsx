@@ -212,7 +212,7 @@ export function AboutPage() {
               <h2 className="card-title" style={{ margin: 0 }}>
                 MCServerManager
               </h2>
-              <span className="badge badge-accent mono">v1.0.0</span>
+              <span className="badge badge-accent mono">v1.0.1</span>
             </div>
             <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
               Local Minecraft Server &amp; Velocity Proxy Admin Panel
@@ -227,7 +227,7 @@ export function AboutPage() {
         <div className="grid-3" style={{ marginTop: '0.25rem' }}>
           <div className="stat-tile">
             <span className="stat-label">Version</span>
-            <span className="stat-value mono">1.0.0</span>
+            <span className="stat-value mono">1.0.1</span>
           </div>
           <div className="stat-tile">
             <span className="stat-label">Created By</span>

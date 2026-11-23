@@ -233,10 +233,20 @@ public final class PlayerProfileManager {
         YamlConfiguration cfg = new YamlConfiguration();
 
         PlayerInventory inv = player.getInventory();
-        Inventory ender = player.getEnderChest();
-        cfg.set("inventory", Arrays.asList(inv.getContents()));
-        cfg.set("enderChest", Arrays.asList(ender.getContents()));
-        cfg.set("health", player.getHealth());
+        Inventory ender = BukkitCompat.getEnderChest(player);
+        ItemStack[] invContents = inv.getContents();
+        cfg.set("inventory", Arrays.asList(invContents));
+        if (invContents.length <= 36) {
+            // MC 1.2.5 - 1.8.8: armor is separate from getContents()
+            try {
+                ItemStack[] armor = inv.getArmorContents();
+                if (armor != null) cfg.set("armor", Arrays.asList(armor));
+            } catch (Throwable ignored) {}
+        }
+        if (ender != null) {
+            cfg.set("enderChest", Arrays.asList(ender.getContents()));
+        }
+        cfg.set("health", BukkitCompat.getHealth(player));
         cfg.set("food", player.getFoodLevel());
         cfg.set("saturation", (double) player.getSaturation());
         cfg.set("exhaustion", (double) player.getExhaustion());
@@ -268,14 +278,17 @@ public final class PlayerProfileManager {
     private void loadOrResetProfile(Player player, String scopeKey) {
         File file = getProfileFile(player.getUniqueId(), scopeKey);
         PlayerInventory inv = player.getInventory();
-        Inventory ender = player.getEnderChest();
+        Inventory ender = BukkitCompat.getEnderChest(player);
 
         if (!file.exists()) {
             // Fresh profile for first time entering this isolated realm/world
             inv.clear();
-            ender.clear();
+            try {
+                inv.setArmorContents(new ItemStack[4]);
+            } catch (Throwable ignored) {}
+            if (ender != null) ender.clear();
             double maxH = safeMaxHealth(player);
-            player.setHealth(maxH);
+            BukkitCompat.setHealth(player, maxH);
             player.setFoodLevel(20);
             player.setSaturation(5.0f);
             player.setExhaustion(0.0f);
@@ -288,11 +301,27 @@ public final class PlayerProfileManager {
 
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
         applyInventoryList(inv, cfg.getList("inventory"));
-        applyInventoryList(ender, cfg.getList("enderChest"));
+        if (inv.getContents().length <= 36) {
+            try {
+                List<?> rawArmor = cfg.getList("armor");
+                ItemStack[] armor = new ItemStack[4];
+                if (rawArmor != null) {
+                    int limit = Math.min(rawArmor.size(), armor.length);
+                    for (int i = 0; i < limit; i++) {
+                        Object item = rawArmor.get(i);
+                        if (item instanceof ItemStack) armor[i] = (ItemStack) item;
+                    }
+                }
+                inv.setArmorContents(armor);
+            } catch (Throwable ignored) {}
+        }
+        if (ender != null) {
+            applyInventoryList(ender, cfg.getList("enderChest"));
+        }
 
         double maxH = safeMaxHealth(player);
         double health = cfg.getDouble("health", maxH);
-        player.setHealth(Math.max(1.0, Math.min(maxH, health)));
+        BukkitCompat.setHealth(player, Math.max(1.0, Math.min(maxH, health)));
         player.setFoodLevel(Math.max(0, Math.min(20, cfg.getInt("food", 20))));
         player.setSaturation((float) cfg.getDouble("saturation", 5.0));
         player.setExhaustion((float) cfg.getDouble("exhaustion", 0.0));
@@ -325,11 +354,7 @@ public final class PlayerProfileManager {
     }
 
     private static double safeMaxHealth(Player p) {
-        try {
-            return Math.max(1.0, p.getMaxHealth());
-        } catch (Throwable ignored) {
-            return 20.0;
-        }
+        return BukkitCompat.getMaxHealth(p);
     }
 
     private File getProfileFile(UUID uuid, String scopeKey) {

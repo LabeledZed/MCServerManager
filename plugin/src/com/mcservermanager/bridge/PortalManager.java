@@ -15,10 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.block.BlockState;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerPortalEvent;
@@ -150,31 +148,31 @@ public final class PortalManager {
         World world = event.getWorld();
         if (world == null) return;
 
-        PortalCreateEvent.CreateReason reason = event.getReason();
-        if (reason == PortalCreateEvent.CreateReason.END_PLATFORM) return;
+        String reasonName = BukkitCompat.getPortalCreateReasonName(event);
+        if ("END_PLATFORM".equals(reasonName)) return;
 
-        List<BlockState> blocks = event.getBlocks();
-        if (blocks == null || blocks.isEmpty()) return;
+        List<BukkitCompat.PortalBlockPos> blocks = BukkitCompat.getPortalCreateBlocks(event);
+        if (blocks.isEmpty()) return;
 
-        // Calculate center of NETHER_PORTAL blocks (or all portal blocks for NETHER_PAIR)
+        // Calculate center of NETHER_PORTAL / PORTAL blocks (or all portal blocks for NETHER_PAIR / OBC_DESTINATION)
         long sumX = 0, sumY = 0, sumZ = 0;
         int count = 0;
-        boolean sawNetherPortal = (reason == PortalCreateEvent.CreateReason.NETHER_PAIR);
-        for (BlockState bs : blocks) {
-            if (bs.getType() == Material.NETHER_PORTAL) {
+        boolean sawNetherPortal = "NETHER_PAIR".equals(reasonName) || "OBC_DESTINATION".equals(reasonName);
+        for (BukkitCompat.PortalBlockPos bs : blocks) {
+            if (BukkitCompat.isNetherPortalMaterial(bs.type)) {
                 sawNetherPortal = true;
-                sumX += bs.getX();
-                sumY += bs.getY();
-                sumZ += bs.getZ();
+                sumX += bs.x;
+                sumY += bs.y;
+                sumZ += bs.z;
                 count++;
             }
         }
         if (!sawNetherPortal) return;
         if (count == 0) {
-            for (BlockState bs : blocks) {
-                sumX += bs.getX();
-                sumY += bs.getY();
-                sumZ += bs.getZ();
+            for (BukkitCompat.PortalBlockPos bs : blocks) {
+                sumX += bs.x;
+                sumY += bs.y;
+                sumZ += bs.z;
                 count++;
             }
         }
@@ -220,10 +218,11 @@ public final class PortalManager {
 
         World fromWorld = from.getWorld();
         PlayerTeleportEvent.TeleportCause cause = event.getCause();
+        String causeName = cause != null ? cause.name() : "";
 
-        if (cause == PlayerTeleportEvent.TeleportCause.NETHER_PORTAL) {
+        if ("NETHER_PORTAL".equals(causeName)) {
             handleNetherPortal(event, player, from, fromWorld, config);
-        } else if (cause == PlayerTeleportEvent.TeleportCause.END_PORTAL) {
+        } else if ("END_PORTAL".equals(causeName)) {
             handleEndPortal(event, player, fromWorld, config);
         }
     }
@@ -275,17 +274,17 @@ public final class PortalManager {
                     destX = ownNetherPortal.x + 0.5;
                     destY = ownNetherPortal.y;
                     destZ = ownNetherPortal.z + 0.5;
-                    event.setSearchRadius(2);
+                    BukkitCompat.setPortalSearchRadius(event, 2);
                 } else if (hasOtherGroupPortalNearby(targetNether.getName(), group.id, destX, destY, destZ, 16.0)) {
                     // Another group already has a portal right here — offset slightly so Bukkit creates a separate portal for this group
                     destX += 18.0;
-                    event.setSearchRadius(4);
+                    BukkitCompat.setPortalSearchRadius(event, 4);
                 }
             }
 
             Location dest = new Location(targetNether, destX, destY, destZ, from.getYaw(), from.getPitch());
             event.setTo(dest);
-            event.setCanCreatePortal(true);
+            BukkitCompat.setPortalCanCreate(event, true);
 
             if (config.ownedColoredPortals) {
                 // Tag departure overworld portal too so both sides glow in the group's color
@@ -373,13 +372,13 @@ public final class PortalManager {
                     destX = ownOverworldPortal.x + 0.5;
                     destY = ownOverworldPortal.y;
                     destZ = ownOverworldPortal.z + 0.5;
-                    event.setSearchRadius(2);
+                    BukkitCompat.setPortalSearchRadius(event, 2);
                 }
             }
 
             Location dest = new Location(targetOverworld, destX, destY, destZ, from.getYaw(), from.getPitch());
             event.setTo(dest);
-            event.setCanCreatePortal(true);
+            BukkitCompat.setPortalCanCreate(event, true);
 
             if (config.ownedColoredPortals && portalOwnerGroup != null) {
                 RealmsConfig.WorldGroup playerGroup = config.findGroupForPlayer(player);
@@ -419,7 +418,7 @@ public final class PortalManager {
             World targetEnd = worlds.getWorld(group.end);
             if (targetEnd == null) return;
             event.setTo(new Location(targetEnd, 100.5, 49.0, 0.5));
-            event.setCanCreatePortal(true);
+            BukkitCompat.setPortalCanCreate(event, true);
         } else if (env == World.Environment.THE_END) {
             World targetOverworld = worlds.getWorld(group.overworld);
             if (targetOverworld == null) return;
@@ -447,7 +446,7 @@ public final class PortalManager {
             for (int dy = -3; dy <= 4; dy++) {
                 for (int dz = -4; dz <= 4; dz++) {
                     Block b = world.getBlockAt(bx + dx, by + dy, bz + dz);
-                    if (b != null && b.getType() == Material.NETHER_PORTAL) {
+                    if (b != null && BukkitCompat.isNetherPortalMaterial(b.getType())) {
                         sumX += (bx + dx);
                         sumY += (by + dy);
                         sumZ += (bz + dz);
@@ -544,7 +543,7 @@ public final class PortalManager {
             for (int dy = -3; dy <= 4; dy++) {
                 for (int dz = -3; dz <= 3; dz++) {
                     Block b = w.getBlockAt(cx + dx, cy + dy, cz + dz);
-                    if (b != null && b.getType() == Material.NETHER_PORTAL) {
+                    if (b != null && BukkitCompat.isNetherPortalMaterial(b.getType())) {
                         return true;
                     }
                 }
@@ -572,7 +571,7 @@ public final class PortalManager {
 
     private void tickColoredPortals(RealmsConfig config) {
         if (config == null || !config.enabled || !config.ownedColoredPortals) return;
-        if (Bukkit.getOnlinePlayers().isEmpty()) return;
+        if (!BukkitCompat.hasOnlinePlayers()) return;
 
         ensureParticleReflection();
         if (!particlesAvailable) return;
@@ -597,7 +596,7 @@ public final class PortalManager {
                             for (int dy = -3; dy <= 4; dy++) {
                                 for (int dz = -3; dz <= 3; dz++) {
                                     Block b = w.getBlockAt(tp.x + dx, tp.y + dy, tp.z + dz);
-                                    if (b != null && b.getType() == Material.NETHER_PORTAL) {
+                                    if (b != null && BukkitCompat.isNetherPortalMaterial(b.getType())) {
                                         activePortalBlocks.add(b);
                                     }
                                 }
@@ -649,7 +648,7 @@ public final class PortalManager {
                     for (int dy = -3; dy <= 4; dy++) {
                         for (int dz = -3; dz <= 3; dz++) {
                             Block b = w.getBlockAt(tp.x + dx, tp.y + dy, tp.z + dz);
-                            if (b != null && b.getType() == Material.NETHER_PORTAL) {
+                            if (b != null && BukkitCompat.isNetherPortalMaterial(b.getType())) {
                                 activePortalBlocks.add(b);
                             }
                         }

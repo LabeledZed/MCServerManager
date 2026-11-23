@@ -1,0 +1,11 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+
+[[mods]]
+modId="mcservermanagerbridge"
+version="2.3.0"
+displayName="MCServerManagerBridge"
+displayTest="IGNORE_ALL_VERSION"
+authors="MCServerManager"
+description='''Loopback management bridge for MCServerManager on NeoForge 1.20.2 - 1.20.4 servers.'''

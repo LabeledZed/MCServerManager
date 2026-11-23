@@ -13,7 +13,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -180,10 +179,11 @@ public final class RealmsListener implements Listener {
         if (player == null || from == null || from.getWorld() == null) return;
 
         PlayerTeleportEvent.TeleportCause cause = event.getCause();
-        if (cause == PlayerTeleportEvent.TeleportCause.DISMOUNT
-                || cause == PlayerTeleportEvent.TeleportCause.EXIT_BED
-                || cause == PlayerTeleportEvent.TeleportCause.ENDER_PEARL
-                || cause == PlayerTeleportEvent.TeleportCause.CHORUS_FRUIT) {
+        String causeName = cause != null ? cause.name() : "";
+        if ("DISMOUNT".equals(causeName)
+                || "EXIT_BED".equals(causeName)
+                || "ENDER_PEARL".equals(causeName)
+                || "CHORUS_FRUIT".equals(causeName)) {
             return;
         }
 
@@ -246,15 +246,16 @@ public final class RealmsListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onPlayerChat(AsyncPlayerChatEvent event) {
+    /**
+     * Invoked via BukkitCompat.registerChatListener (supports AsyncPlayerChatEvent on 1.3.1+ and PlayerChatEvent on 1.2.5).
+     */
+    public void handleChatRecipients(Player sender, Collection<Player> recipients) {
         RealmsConfig cfg = plugin.getRealmsConfig();
         if (!cfg.enabled) return;
-        Player sender = event.getPlayer();
-        if (sender == null || sender.getWorld() == null) return;
+        if (sender == null || sender.getWorld() == null || recipients == null) return;
 
         String senderWorld = sender.getWorld().getName();
-        Iterator<Player> it = event.getRecipients().iterator();
+        Iterator<Player> it = recipients.iterator();
         while (it.hasNext()) {
             Player recipient = it.next();
             if (recipient == null || recipient == sender) continue;
@@ -306,32 +307,28 @@ public final class RealmsListener implements Listener {
 
     public void refreshVisibilityForAll() {
         RealmsConfig cfg = plugin.getRealmsConfig();
-        Collection<? extends Player> online = Bukkit.getOnlinePlayers();
+        List<Player> online = BukkitCompat.getOnlinePlayers();
         for (Player viewer : online) {
             String wA = viewer.getWorld() != null ? viewer.getWorld().getName() : "";
             for (Player target : online) {
                 if (viewer == target) continue;
                 String wB = target.getWorld() != null ? target.getWorld().getName() : "";
                 boolean visible = !cfg.enabled || cfg.canPlayersInteractInScope(wA, wB, true);
-                try {
-                    if (visible) {
-                        viewer.showPlayer(plugin, target);
-                    } else {
-                        viewer.hidePlayer(plugin, target);
-                    }
-                } catch (Throwable ignored) {}
+                if (visible) {
+                    BukkitCompat.showPlayer(viewer, plugin, target);
+                } else {
+                    BukkitCompat.hidePlayer(viewer, plugin, target);
+                }
             }
         }
     }
 
     public void showAllPlayersToEveryone() {
-        Collection<? extends Player> online = Bukkit.getOnlinePlayers();
+        List<Player> online = BukkitCompat.getOnlinePlayers();
         for (Player viewer : online) {
             for (Player target : online) {
                 if (viewer == target) continue;
-                try {
-                    viewer.showPlayer(plugin, target);
-                } catch (Throwable ignored) {}
+                BukkitCompat.showPlayer(viewer, plugin, target);
             }
         }
     }

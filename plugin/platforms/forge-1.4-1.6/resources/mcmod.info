@@ -1,0 +1,10 @@
+[
+  {
+    "modid": "mcservermanagerbridge",
+    "name": "MCServerManagerBridge",
+    "description": "Loopback management bridge for MCServerManager on Forge 1.3.2 - 1.6.4 servers.",
+    "version": "2.3.0",
+    "mcversion": "",
+    "authorList": ["MCServerManager"]
+  }
+]

@@ -358,14 +358,18 @@ export class ServerManagerService extends EventEmitter {
         );
       }
 
-      // Clean up any leftover bridge JARs from other platforms (e.g. Fabric -> Forge switch)
+      // Clean up any leftover bridge JARs from other platforms or Forge eras (e.g. Fabric -> Forge or Forge 1.12 -> 1.20)
       await removeStaleBridgeJars(
         serverDir,
-        server.bridgeEnabled !== false ? getBridgePlatformSpec(server.software) : null,
+        server.bridgeEnabled !== false ? getBridgePlatformSpec(server.software, server.mcVersion) : null,
       );
 
       // Auto-install or refresh companion bridge plugin/mod on all supported platforms (except vanilla)
-      if (server.bridgeEnabled !== false && supportsBridgePlugin(server.software) && needsBridgeJarUpdate(server.id, server.software)) {
+      if (
+        server.bridgeEnabled !== false &&
+        supportsBridgePlugin(server.software) &&
+        needsBridgeJarUpdate(server.id, server.software, server.mcVersion)
+      ) {
         await installBridgePlugin(server).catch(() => {});
       }
 

@@ -42,7 +42,7 @@ import org.slf4j.Logger;
 @Plugin(
     id = "mcservermanagerbridge",
     name = "MCServerManagerBridge",
-    version = "2.2.0",
+    version = "2.3.0",
     description = "Loopback management bridge for MCServerManager on Velocity proxy servers",
     authors = {"MCServerManager"}
 )
@@ -290,10 +290,11 @@ public final class VelocityBridgePlugin {
         }
         if ("kick".equals(action)) {
             String reason = JsonUtil.asString(body.get("value"), "");
-            Object comp = makeAdventureComponent(translateColorCodes(!reason.isEmpty() ? reason : "Disconnected via MCServerManager"));
+            String msg = translateColorCodes(!reason.isEmpty() ? reason : "Disconnected via MCServerManager");
+            Object comp = makeAdventureComponent(msg);
             if (comp != null) {
                 try {
-                    Class<?> compCls = Class.forName("net.kyori.adventure.text.Component");
+                    Class<?> compCls = resolveComponentBaseClass(comp);
                     Method disconnect = player.getClass().getMethod("disconnect", compCls);
                     disconnect.invoke(player, comp);
                 } catch (Throwable ex) {
@@ -316,6 +317,7 @@ public final class VelocityBridgePlugin {
     }
 
     private static Object makeAdventureComponent(String text) {
+        // Velocity 3.x: net.kyori.adventure.text.*
         try {
             Class<?> serCls = Class.forName("net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer");
             Object ser = serCls.getMethod("legacySection").invoke(null);
@@ -325,12 +327,25 @@ public final class VelocityBridgePlugin {
             Class<?> compCls = Class.forName("net.kyori.adventure.text.Component");
             return compCls.getMethod("text", String.class).invoke(null, text);
         } catch (Throwable ignored) {}
+        // Velocity 1.1.x: net.kyori.text.*
+        try {
+            Class<?> compCls = Class.forName("net.kyori.text.TextComponent");
+            return compCls.getMethod("of", String.class).invoke(null, text);
+        } catch (Throwable ignored) {}
         return null;
+    }
+
+    private static Class<?> resolveComponentBaseClass(Object comp) throws ClassNotFoundException {
+        try {
+            Class<?> adv = Class.forName("net.kyori.adventure.text.Component");
+            if (adv.isInstance(comp)) return adv;
+        } catch (Throwable ignored) {}
+        return Class.forName("net.kyori.text.Component");
     }
 
     private static void sendComponentTo(Object audience, Object component) {
         try {
-            Class<?> compCls = Class.forName("net.kyori.adventure.text.Component");
+            Class<?> compCls = resolveComponentBaseClass(component);
             Method m = audience.getClass().getMethod("sendMessage", compCls);
             m.invoke(audience, component);
         } catch (Throwable ignored) {}

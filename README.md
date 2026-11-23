@@ -10,16 +10,17 @@ A web panel for Minecraft servers and Velocity proxies.
 
 ## Features
 
-- **Server Management**: Create, import, start, stop, restart, and auto-start servers (**Paper**, **Purpur**, **Leaf**, **Folia**, **Spigot**, **Vanilla**, **Fabric**, **NeoForge**, **Forge**, **Velocity**, **Custom**).
+- **Server Management**: Create, import, start, stop, restart, and auto-start servers (**Paper**, **Purpur**, **Leaf**, **Folia**, **Spigot**, **Vanilla**, **Fabric**, **NeoForge**, **Forge**, **Velocity**, **Custom**) with live CPU, RAM, and TPS sparkline monitoring.
 - **Live Console**: Real-time WebSocket console with ANSI colors, regex/case filtering, command history, and log file search.
 - **Config Studio**: Visual & raw editor for `server.properties`, `velocity.toml`, YAML, JSON, and TOML files.
 - **Plugins & Mods**: `.jar` upload, enable/disable, Modrinth search & install, and nested config editing.
-- **Companion Bridge (`MCServerManagerBridge`)**: Live TPS, gamerules, world environment, broadcasts, and player controls for Spigot/Paper/Folia, Velocity, Fabric, NeoForge, and Forge.
+- **Companion Bridge (`MCServerManagerBridge`)**: Java 8+ compatible loopback bridge for live TPS, gamerules, world environment, broadcasts, and player controls across Bukkit/Spigot/Paper/Folia (**1.2.5 – 26.3+**), Fabric & Legacy Fabric (**1.7.10 – 26.3+**), Forge (**1.3.2 – 26.3+** across automatic era builds), NeoForge (**1.20.1 – 26.3+**), and Velocity (**1.1 – 3.x+**).
 - **Realms & Multi-World**: World groups, inventory/chat/visibility isolation, colored portals, `/tpa`, `/back`, and per-world plugin rules.
 - **Velocity Proxy Network**: Link managed or external backend servers, manage `try` order, forced hosts, forwarding secrets, and live proxy players.
 - **Bedrock Cross-Play (Geyser & Floodgate)**: 1-click install, config editor, and managed Geyser Standalone sidecar for Vanilla/Forge.
+- **Players & File Manager**: Manage whitelist, operators, player/IP bans, and kicks; browse, edit, upload, download, rename, extract, and delete server files.
 - **Worlds, Backups & Schedules**: 26.1+ unified & pre-26.1 world layouts, `.zip` world import/export, full/world backups, and task scheduler.
-- **Java & Access Control**: Portable Adoptium Java installer, optional login auth, and granular user permissions.
+- **Java, Access Control & Tray App**: Portable Adoptium Java installer, optional login auth, granular user permissions, and Windows system tray launcher (`MCServerManager.exe`).
 
 ## Quick Start
 

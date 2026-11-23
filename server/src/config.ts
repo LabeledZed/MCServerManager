@@ -39,10 +39,13 @@ export const BRIDGE_VELOCITY_JAR_ASSET = path.join(ASSETS_DIR, 'MCServerManagerB
 export const BRIDGE_FABRIC_JAR_ASSET = path.join(ASSETS_DIR, 'MCServerManagerBridge-Fabric.jar');
 export const BRIDGE_NEOFORGE_JAR_ASSET = path.join(ASSETS_DIR, 'MCServerManagerBridge-NeoForge.jar');
 export const BRIDGE_FORGE_JAR_ASSET = path.join(ASSETS_DIR, 'MCServerManagerBridge-Forge.jar');
+export const BRIDGE_FORGE_18_112_JAR_ASSET = path.join(ASSETS_DIR, 'MCServerManagerBridge-Forge-1.8-1.12.jar');
+export const BRIDGE_FORGE_17_JAR_ASSET = path.join(ASSETS_DIR, 'MCServerManagerBridge-Forge-1.7.jar');
+export const BRIDGE_FORGE_14_16_JAR_ASSET = path.join(ASSETS_DIR, 'MCServerManagerBridge-Forge-1.4-1.6.jar');
 export const CLIENT_DIST_DIR = path.join(PROJECT_ROOT, 'client', 'dist');
 
 export const PORT = Number(process.env.PORT || 3001);
-export const USER_AGENT = 'MCServerManager/1.0.0 (https://localhost/mcservermanager)';
+export const USER_AGENT = 'MCServerManager/1.0.1 (https://localhost/mcservermanager)';
 
 export function ensureAppDirs(): void {
   for (const dir of [DATA_DIR, SERVERS_DIR, BACKUPS_DIR, RUNTIMES_DIR]) {

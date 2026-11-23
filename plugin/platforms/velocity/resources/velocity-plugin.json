@@ -1,7 +1,7 @@
 {
   "id": "mcservermanagerbridge",
   "name": "MCServerManagerBridge",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Loopback management bridge for MCServerManager on Velocity proxy servers",
   "authors": ["MCServerManager"],
   "dependencies": [],

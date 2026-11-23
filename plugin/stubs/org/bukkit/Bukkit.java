@@ -21,5 +21,6 @@ public final class Bukkit {
     public static Player getPlayerExact(String name) { return null; }
     public static int broadcastMessage(String message) { return 0; }
     public static String getName() { return null; }
+    public static String getVersion() { return null; }
     public static String getBukkitVersion() { return null; }
 }

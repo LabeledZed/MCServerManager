@@ -106,7 +106,7 @@ Write-Host "Building all MCServerManagerBridge platform JARs using $javac..."
 if (Test-Path $buildDir) { Remove-Item -Recurse -Force $buildDir }
 New-Item -ItemType Directory -Force -Path $buildDir, $assetsDir | Out-Null
 
-# 1. Spigot / Paper / Purpur / Leaf / Folia / Custom
+# 1. Spigot / Paper / Purpur / Leaf / Folia / CraftBukkit / Custom (MC 1.2.5 - 26.3+)
 Build-BridgeJar `
   -Label "spigot-folia" `
   -OutJarName "MCServerManagerBridge.jar" `
@@ -115,45 +115,75 @@ Build-BridgeJar `
   -SrcFiles @(Get-ChildItem (Join-Path $pluginRoot "src") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }) `
   -ResourcesDir (Join-Path $pluginRoot "resources")
 
-# 2. Velocity Proxy
+# 2. Velocity Proxy (1.1 - 3.x+, Java 8+)
 $velDir = Join-Path $platformsRoot "velocity"
 Build-BridgeJar `
   -Label "velocity" `
   -OutJarName "MCServerManagerBridge-Velocity.jar" `
-  -Release "17" `
+  -Release "8" `
   -StubFiles @(Get-ChildItem (Join-Path $velDir "stubs") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }) `
   -SrcFiles (@($jsonUtilSrc) + @(Get-ChildItem (Join-Path $velDir "src") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName })) `
   -ResourcesDir (Join-Path $velDir "resources")
 
-# 3. Fabric Mod
+# 3. Fabric & Legacy Fabric Mod (MC 1.7.10 - 26.3+, Java 8+)
 $fabDir = Join-Path $platformsRoot "fabric"
 Build-BridgeJar `
   -Label "fabric" `
   -OutJarName "MCServerManagerBridge-Fabric.jar" `
-  -Release "17" `
+  -Release "8" `
   -StubFiles @(Get-ChildItem (Join-Path $fabDir "stubs") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }) `
   -SrcFiles (@($jsonUtilSrc, $modCommonSrc) + @(Get-ChildItem (Join-Path $fabDir "src") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName })) `
   -ResourcesDir (Join-Path $fabDir "resources")
 
-# 4. NeoForge Mod
+# 4. NeoForge Mod (MC 1.20.2 - 26.3+, Java 8+)
 $neoDir = Join-Path $platformsRoot "neoforge"
 Build-BridgeJar `
   -Label "neoforge" `
   -OutJarName "MCServerManagerBridge-NeoForge.jar" `
-  -Release "17" `
+  -Release "8" `
   -StubFiles @(Get-ChildItem (Join-Path $neoDir "stubs") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }) `
   -SrcFiles (@($jsonUtilSrc, $modCommonSrc) + @(Get-ChildItem (Join-Path $neoDir "src") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName })) `
   -ResourcesDir (Join-Path $neoDir "resources")
 
-# 5. Forge Mod
+# 5. Modern Forge Mod (MC 1.13.2 - 26.3+ & NeoForge 1.20.1, Java 8+)
 $forgeDir = Join-Path $platformsRoot "forge"
 Build-BridgeJar `
   -Label "forge" `
   -OutJarName "MCServerManagerBridge-Forge.jar" `
-  -Release "17" `
+  -Release "8" `
   -StubFiles @(Get-ChildItem (Join-Path $forgeDir "stubs") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }) `
   -SrcFiles (@($jsonUtilSrc, $modCommonSrc) + @(Get-ChildItem (Join-Path $forgeDir "src") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName })) `
   -ResourcesDir (Join-Path $forgeDir "resources")
 
+# 6. Legacy Forge Mod (MC 1.8 - 1.12.2, Java 8+)
+$forge1812Dir = Join-Path $platformsRoot "forge-1.8-1.12"
+Build-BridgeJar `
+  -Label "forge-1.8-1.12" `
+  -OutJarName "MCServerManagerBridge-Forge-1.8-1.12.jar" `
+  -Release "8" `
+  -StubFiles @(Get-ChildItem (Join-Path $forge1812Dir "stubs") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }) `
+  -SrcFiles (@($jsonUtilSrc, $modCommonSrc) + @(Get-ChildItem (Join-Path $forge1812Dir "src") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName })) `
+  -ResourcesDir (Join-Path $forge1812Dir "resources")
+
+# 7. Classic Forge Mod (MC 1.7.2 - 1.7.10, Java 8+)
+$forge17Dir = Join-Path $platformsRoot "forge-1.7"
+Build-BridgeJar `
+  -Label "forge-1.7" `
+  -OutJarName "MCServerManagerBridge-Forge-1.7.jar" `
+  -Release "8" `
+  -StubFiles @(Get-ChildItem (Join-Path $forge17Dir "stubs") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }) `
+  -SrcFiles (@($jsonUtilSrc, $modCommonSrc) + @(Get-ChildItem (Join-Path $forge17Dir "src") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName })) `
+  -ResourcesDir (Join-Path $forge17Dir "resources")
+
+# 8. Ancient Forge Mod (MC 1.3.2 - 1.6.4, Java 8+)
+$forge1416Dir = Join-Path $platformsRoot "forge-1.4-1.6"
+Build-BridgeJar `
+  -Label "forge-1.4-1.6" `
+  -OutJarName "MCServerManagerBridge-Forge-1.4-1.6.jar" `
+  -Release "8" `
+  -StubFiles @(Get-ChildItem (Join-Path $forge1416Dir "stubs") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName }) `
+  -SrcFiles (@($jsonUtilSrc, $modCommonSrc) + @(Get-ChildItem (Join-Path $forge1416Dir "src") -Filter "*.java" -Recurse | ForEach-Object { $_.FullName })) `
+  -ResourcesDir (Join-Path $forge1416Dir "resources")
+
 Remove-Item -Recurse -Force $buildDir
-Write-Host "All 5 MCServerManagerBridge platform JARs built successfully."
+Write-Host "All 8 MCServerManagerBridge platform JARs built successfully."

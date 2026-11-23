@@ -129,7 +129,7 @@ function isLoopbackAddress(addr?: string): boolean {
 
 // API routes
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, name: 'MCServerManager', version: '1.0.0' });
+  res.json({ ok: true, name: 'MCServerManager', version: '1.0.1' });
 });
 
 app.get('/api/system/running-servers', (req, res) => {
