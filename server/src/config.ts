@@ -45,7 +45,7 @@ export const BRIDGE_FORGE_14_16_JAR_ASSET = path.join(ASSETS_DIR, 'MCServerManag
 export const CLIENT_DIST_DIR = path.join(PROJECT_ROOT, 'client', 'dist');
 
 export const PORT = Number(process.env.PORT || 3001);
-export const USER_AGENT = 'MCServerManager/1.0.1 (https://localhost/mcservermanager)';
+export const USER_AGENT = 'MCServerManager/1.0.2 (https://localhost/mcservermanager)';
 
 export function ensureAppDirs(): void {
   for (const dir of [DATA_DIR, SERVERS_DIR, BACKUPS_DIR, RUNTIMES_DIR]) {

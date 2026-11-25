@@ -33,7 +33,7 @@ export function ImportServerModal({ open, onClose, onImported, onNotify }: Impor
   const [inspected, setInspected] = useState<InspectedExistingServer | null>(null);
   const [inspectError, setInspectError] = useState<string | null>(null);
 
-  const [transferMode, setTransferMode] = useState<'move' | 'copy'>('move');
+  const [transferMode, setTransferMode] = useState<'move' | 'copy'>('copy');
   const [name, setName] = useState('');
   const [software, setSoftware] = useState<ServerSoftware>('paper');
   const [mcVersion, setMcVersion] = useState('1.21.4');
@@ -233,8 +233,8 @@ export function ImportServerModal({ open, onClose, onImported, onNotify }: Impor
                   value={transferMode}
                   onChange={(e) => setTransferMode(e.target.value as 'move' | 'copy')}
                 >
-                  <option value="move">Move folder into MCServerManager</option>
                   <option value="copy">Copy folder (keep original)</option>
+                  <option value="move">Move folder into MCServerManager</option>
                 </select>
               </div>
               <div className="field">

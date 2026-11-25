@@ -555,6 +555,27 @@ public final class TpaManager implements CommandExecutor {
             return;
         }
 
+        if (cfg.enabled) {
+            RealmsConfig.WorldGroup playerGroup = cfg.findGroupForPlayer(player);
+            List<RealmsConfig.WorldGroup> targetGroups = cfg.findGroupsContainingWorld(targetWorld.getName());
+            if (playerGroup != null && !targetGroups.isEmpty()) {
+                boolean allowed = false;
+                for (RealmsConfig.WorldGroup tg : targetGroups) {
+                    if (playerGroup.id.equalsIgnoreCase(tg.id) || cfg.canGroupsExchangeTpa(playerGroup, tg)) {
+                        allowed = true;
+                        break;
+                    }
+                }
+                if (!allowed) {
+                    player.sendMessage(
+                        "\u00A7cCannot return to '" + targetWorld.getName()
+                            + "': your current list does not have access to that realm."
+                    );
+                    return;
+                }
+            }
+        }
+
         Location from = player.getLocation();
         Location dest = new Location(targetWorld, back.x, back.y, back.z, back.yaw, back.pitch);
         spawnTeleportParticles(from);

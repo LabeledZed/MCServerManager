@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -196,6 +197,7 @@ namespace MCServerManagerTray
 
         private readonly string projectRoot;
         private readonly int port;
+        private readonly string traySecret;
         private readonly bool startMinimized;
         private readonly Icon appIcon;
         private readonly NotifyIcon trayIcon;
@@ -216,6 +218,7 @@ namespace MCServerManagerTray
         {
             this.projectRoot = projectRoot;
             this.port = port;
+            this.traySecret = GenerateTraySecret();
             this.showEvent = showEvent;
             this.startMinimized = startMinimized;
 
@@ -296,7 +299,20 @@ namespace MCServerManagerTray
             };
             consoleBox.LinkClicked += (s, e) =>
             {
-                try { Process.Start(e.LinkText); } catch { }
+                try
+                {
+                    Uri uri;
+                    if (Uri.TryCreate(e.LinkText, UriKind.Absolute, out uri) &&
+                        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = uri.AbsoluteUri,
+                            UseShellExecute = true
+                        });
+                    }
+                }
+                catch { }
             };
 
             // Bottom Options Bar
@@ -622,6 +638,21 @@ namespace MCServerManagerTray
             consoleBox.ScrollToCaret();
         }
 
+        private static string GenerateTraySecret()
+        {
+            byte[] bytes = new byte[24];
+            using (var rng = new RNGCryptoServiceProvider())
+            {
+                rng.GetBytes(bytes);
+            }
+            var sb = new StringBuilder(bytes.Length * 2);
+            foreach (byte b in bytes)
+            {
+                sb.AppendFormat("{0:x2}", b);
+            }
+            return sb.ToString();
+        }
+
         private string ResolveNodePath()
         {
             string defaultWin = @"C:\Program Files\nodejs\node.exe";
@@ -662,6 +693,7 @@ namespace MCServerManagerTray
                 StandardErrorEncoding = Encoding.UTF8
             };
             psi.EnvironmentVariables["PORT"] = port.ToString();
+            psi.EnvironmentVariables["MCSM_TRAY_SECRET"] = traySecret;
 
             try
             {
@@ -691,6 +723,7 @@ namespace MCServerManagerTray
             {
                 var req = (HttpWebRequest)WebRequest.Create(string.Format("http://127.0.0.1:{0}/api/system/running-servers", port));
                 req.Method = "GET";
+                req.Headers["X-Tray-Secret"] = traySecret;
                 req.Timeout = 2000;
                 req.ReadWriteTimeout = 2000;
                 using (var res = (HttpWebResponse)req.GetResponse())
@@ -714,6 +747,7 @@ namespace MCServerManagerTray
                 var req = (HttpWebRequest)WebRequest.Create(string.Format("http://127.0.0.1:{0}/api/system/shutdown", port));
                 req.Method = "POST";
                 req.ContentType = "application/json";
+                req.Headers["X-Tray-Secret"] = traySecret;
                 req.Timeout = timeoutMs;
                 req.ReadWriteTimeout = timeoutMs;
                 byte[] body = Encoding.UTF8.GetBytes("{\"mode\":\"" + mode + "\"}");

@@ -17,9 +17,11 @@ import {
 import { deleteAddon } from './pluginService.js';
 import {
   findOrphanedServerPids,
+  isLocalTcpPortInUse,
   sampleProcessMetrics,
   terminateProcessAndWait,
 } from '../utils/processStats.js';
+import { resolveInside } from '../utils/fsSafe.js';
 import { pingMinecraftServer } from '../utils/mcPing.js';
 import type {
   ConsoleLine,
@@ -63,12 +65,48 @@ const AIKAR_FLAGS = [
 const G1GC_FLAGS = ['-XX:+UseG1GC', '-XX:MaxGCPauseMillis=100'];
 const ZGC_FLAGS = ['-XX:+UseZGC', '-XX:+ZGenerational'];
 
+const DANGEROUS_JVM_ARG_RE =
+  /^(?:@.*|-(?:javaagent|agentlib|agentpath|Xbootclasspath|jar)\b.*|-XX:[+-]?(?:OnOutOfMemoryError|OnError|ErrorFile|HeapDumpPath|LogFile|CompileCommandFile)\b.*)$/i;
+
+export function validateCustomJvmArgs(customArgs: string): string[] {
+  if (!customArgs || !customArgs.trim()) return [];
+  if (/[\r\n\0]/.test(customArgs)) {
+    throw new Error('Custom JVM arguments must not contain newline or control characters');
+  }
+  const tokens = customArgs.trim().split(/\s+/).filter(Boolean);
+  for (const token of tokens) {
+    if (!token.startsWith('-')) {
+      throw new Error(`Invalid JVM argument "${token}": all custom JVM flags must start with "-"`);
+    }
+    if (DANGEROUS_JVM_ARG_RE.test(token)) {
+      throw new Error(`Blocked unsafe JVM flag: "${token}"`);
+    }
+  }
+  return tokens;
+}
+
+export function validateServerJarFile(serverDir: string, jarFile: string): string {
+  const trimmed = (jarFile || '').trim();
+  if (!trimmed) throw new Error('Server JAR filename is required');
+  if (trimmed === '@args') return '@args';
+  if (
+    path.basename(trimmed) !== trimmed ||
+    trimmed.includes('..') ||
+    trimmed.includes('/') ||
+    trimmed.includes('\\') ||
+    !trimmed.toLowerCase().endsWith('.jar')
+  ) {
+    throw new Error('Server JAR must be a valid .jar filename inside the server root directory');
+  }
+  resolveInside(serverDir, trimmed);
+  return trimmed;
+}
+
 function buildJvmPresetArgs(preset: JvmPreset, customArgs: string): string[] {
   if (preset === 'aikar') return [...AIKAR_FLAGS];
   if (preset === 'g1gc') return [...G1GC_FLAGS];
   if (preset === 'zgc') return [...ZGC_FLAGS];
-  if (!customArgs.trim()) return [];
-  return customArgs.trim().split(/\s+/).filter(Boolean);
+  return validateCustomJvmArgs(customArgs);
 }
 
 function classifyLogLevel(text: string, stream: 'stdout' | 'stderr'): ConsoleLine['level'] {
@@ -346,6 +384,12 @@ export class ServerManagerService extends EventEmitter {
         }
       }
 
+      if (await isLocalTcpPortInUse(server.port)) {
+        throw new Error(
+          `TCP port ${server.port} is already in use by another process on this machine. Choose a free port in Settings.`,
+        );
+      }
+
       // Remove any plugins/mods that were queued for deletion while locked previously
       await this.flushPendingAddonDeletions(serverId);
 
@@ -392,13 +436,24 @@ export class ServerManagerService extends EventEmitter {
         if (!argsFile) {
           throw new Error('Could not find Forge/NeoForge win_args.txt / unix_args.txt in libraries/');
         }
+        const argsFullPath = resolveInside(serverDir, argsFile);
+        const argsContent = await fs.readFile(argsFullPath, 'utf8');
+        for (const token of argsContent.split(/\s+/).filter(Boolean)) {
+          if (
+            /^-(?:javaagent|agentlib|agentpath|Xbootclasspath)\b/i.test(token) ||
+            /^-XX:[+-]?(?:OnOutOfMemoryError|OnError)\b/i.test(token)
+          ) {
+            throw new Error(`Blocked unsafe JVM argument "${token}" inside ${argsFile}`);
+          }
+        }
         args.push(`@${argsFile}`, 'nogui');
       } else {
-        const jarPath = path.join(serverDir, server.jarFile);
+        const safeJar = validateServerJarFile(serverDir, server.jarFile);
+        const jarPath = resolveInside(serverDir, safeJar);
         if (!fsSync.existsSync(jarPath)) {
-          throw new Error(`Server JAR not found: ${server.jarFile}. Re-download or upload a JAR in Settings.`);
+          throw new Error(`Server JAR not found: ${safeJar}. Re-download or upload a JAR in Settings.`);
         }
-        args.push('-jar', server.jarFile);
+        args.push('-jar', safeJar);
         if (server.software !== 'velocity') {
           args.push('nogui');
         }
@@ -569,7 +624,8 @@ export class ServerManagerService extends EventEmitter {
       return;
     }
 
-    const stopCmd = server?.stopCommand || (server?.software === 'velocity' ? 'end' : 'stop');
+    const rawStopCmd = server?.stopCommand || (server?.software === 'velocity' ? 'end' : 'stop');
+    const stopCmd = rawStopCmd.replace(/[\r\n\0]+/g, ' ').trim() || 'stop';
     this.pushConsoleLine(serverId, `[MCServerManager] Sending graceful "${stopCmd}" command...`, 'system');
     try {
       managed.child.stdin?.write(`${stopCmd}\n`);
@@ -600,7 +656,7 @@ export class ServerManagerService extends EventEmitter {
   }
 
   sendCommand(serverId: string, command: string): void {
-    const trimmed = command.trim();
+    const trimmed = command.replace(/[\r\n\0]+/g, ' ').trim();
     if (!trimmed) return;
     const managed = this.processes.get(serverId);
     if (!managed || !managed.child.stdin) {

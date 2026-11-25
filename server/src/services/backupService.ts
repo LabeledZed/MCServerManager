@@ -3,11 +3,33 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { BACKUPS_DIR, getServerDir } from '../config.js';
-import { resolveInside } from '../utils/fsSafe.js';
+import {
+  assertSafeZipEntries,
+  MAX_ZIP_SINGLE_ENTRY_BYTES,
+  MAX_ZIP_UNCOMPRESSED_BYTES,
+  resolveInside,
+} from '../utils/fsSafe.js';
 import { store } from './store.js';
 import { listWorlds } from './worldService.js';
 import { serverManager } from './serverManager.js';
 import type { BackupInfo } from '../../../shared/types.js';
+
+async function addFolderToZipNoSymlinks(zip: AdmZip, folderFull: string, zipPrefix: string): Promise<void> {
+  const entries = await fs.readdir(folderFull, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (entry.isSymbolicLink() || entry.name.endsWith('.lock')) continue;
+    const full = path.join(folderFull, entry.name);
+    const relZip = zipPrefix ? `${zipPrefix}/${entry.name}` : entry.name;
+    const lstat = await fs.lstat(full).catch(() => null);
+    if (!lstat || lstat.isSymbolicLink()) continue;
+    if (lstat.isDirectory()) {
+      await addFolderToZipNoSymlinks(zip, full, relZip);
+    } else if (lstat.isFile()) {
+      const parentZipDir = path.posix.dirname(relZip);
+      zip.addLocalFile(full, parentZipDir === '.' ? '' : parentZipDir);
+    }
+  }
+}
 
 function getServerBackupDir(serverId: string): string {
   const safe = serverId.replace(/[^a-zA-Z0-9_-]/g, '');
@@ -94,16 +116,19 @@ export async function createBackup(
       throw new Error('No Minecraft worlds found to back up');
     }
     for (const w of worlds) {
-      zip.addLocalFolder(path.join(serverDir, w.name), w.name);
+      await addFolderToZipNoSymlinks(zip, resolveInside(serverDir, w.name), w.name);
     }
   } else {
     const rootItems = await fs.readdir(serverDir, { withFileTypes: true });
     for (const item of rootItems) {
+      if (item.isSymbolicLink()) continue;
       if (item.name === 'cache' || item.name === 'logs' || item.name.endsWith('.lock')) continue;
-      const full = path.join(serverDir, item.name);
-      if (item.isDirectory()) {
-        zip.addLocalFolder(full, item.name);
-      } else if (item.isFile()) {
+      const full = resolveInside(serverDir, item.name);
+      const lstat = await fs.lstat(full).catch(() => null);
+      if (!lstat || lstat.isSymbolicLink()) continue;
+      if (lstat.isDirectory()) {
+        await addFolderToZipNoSymlinks(zip, full, item.name);
+      } else if (lstat.isFile()) {
         zip.addLocalFile(full);
       }
     }
@@ -152,15 +177,26 @@ export async function restoreBackup(serverId: string, backupId: string): Promise
   await fs.mkdir(serverDir, { recursive: true });
 
   const zip = new AdmZip(zipPath);
-  for (const entry of zip.getEntries()) {
+  const entries = zip.getEntries();
+  assertSafeZipEntries(entries);
+  let extractedBytes = 0;
+  for (const entry of entries) {
     const rel = entry.entryName.replace(/\\/g, '/');
     if (!rel || rel.startsWith('..')) continue;
     const dest = resolveInside(serverDir, rel);
     if (entry.isDirectory) {
       await fs.mkdir(dest, { recursive: true });
     } else {
+      const data = entry.getData();
+      if (data.byteLength > MAX_ZIP_SINGLE_ENTRY_BYTES) {
+        throw new Error(`Backup entry "${rel}" exceeds maximum allowed file size`);
+      }
+      extractedBytes += data.byteLength;
+      if (extractedBytes > MAX_ZIP_UNCOMPRESSED_BYTES) {
+        throw new Error('Backup restore aborted: uncompressed data exceeds 1 GB limit');
+      }
       await fs.mkdir(path.dirname(dest), { recursive: true });
-      await fs.writeFile(dest, entry.getData());
+      await fs.writeFile(dest, data);
     }
   }
 }

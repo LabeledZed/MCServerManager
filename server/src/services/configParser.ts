@@ -6,6 +6,7 @@ import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import {
   atomicWriteFile,
   detectConfigFormat,
+  isBinaryFilename,
   isLikelyBinaryBuffer,
   normalizeRelPath,
   resolveInside,
@@ -17,6 +18,23 @@ import type {
   ServerConfigFileEntry,
   ServerSoftware,
 } from '../../../shared/types.js';
+
+const FORBIDDEN_CONFIG_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function assertAllowedConfigPath(relativePath: string): string {
+  const rel = normalizeRelPath(relativePath);
+  if (!rel) throw new Error('Config file path is required');
+  if (/(?:^|\/)bridge\.properties$/i.test(rel)) {
+    throw new Error('Access denied: bridge.properties is managed internally');
+  }
+  if (/^libraries(?:\/|$)/i.test(rel) || /(?:^|\/)(?:win_args|unix_args)\.txt$/i.test(rel)) {
+    throw new Error('Access denied: modloader runtime libraries and JVM argument files cannot be edited in Configs');
+  }
+  if (isBinaryFilename(rel) || /\.(?:bat|cmd|sh|ps1|exe|dll|so|dylib|jar)$/i.test(rel)) {
+    throw new Error('Access denied: executable or binary files cannot be edited in Configs');
+  }
+  return rel;
+}
 
 // ---------- Curated metadata for server.properties (Aternos-grade Descriptions & Categories) ----------
 
@@ -308,8 +326,9 @@ function jsValueToTree(val: unknown, key: string, nodePath: (string | number)[],
 
 function treeNodeToJs(node: ConfigTreeNode): unknown {
   if (node.kind === 'object') {
-    const obj: Record<string, unknown> = {};
+    const obj: Record<string, unknown> = Object.create(null);
     for (const child of node.children || []) {
+      if (FORBIDDEN_CONFIG_KEYS.has(child.key)) continue;
       obj[child.key] = treeNodeToJs(child);
     }
     return obj;
@@ -330,8 +349,9 @@ function treeToJsObject(tree: ConfigTreeNode[], rootIsArray = false): unknown {
   if (rootIsArray) {
     return tree.map((node) => treeNodeToJs(node));
   }
-  const obj: Record<string, unknown> = {};
+  const obj: Record<string, unknown> = Object.create(null);
   for (const node of tree) {
+    if (FORBIDDEN_CONFIG_KEYS.has(node.key)) continue;
     obj[node.key] = treeNodeToJs(node);
   }
   return obj;
@@ -590,7 +610,7 @@ function applyTreeToYamlDoc(doc: YAML.Document, tree: ConfigTreeNode[], rootIsAr
 }
 
 export async function readConfigDocument(serverDir: string, relativePath: string): Promise<ParsedConfigDocument> {
-  const rel = normalizeRelPath(relativePath);
+  const rel = assertAllowedConfigPath(relativePath);
   const fullPath = resolveInside(serverDir, rel);
   const stat = await fs.stat(fullPath);
   if (stat.size > 5 * 1024 * 1024) {
@@ -750,7 +770,7 @@ export async function saveConfigFromTree(
   relativePath: string,
   tree: ConfigTreeNode[],
 ): Promise<ParsedConfigDocument> {
-  const rel = normalizeRelPath(relativePath);
+  const rel = assertAllowedConfigPath(relativePath);
   const fullPath = resolveInside(serverDir, rel);
   const fileName = path.basename(fullPath);
   const format = detectConfigFormat(fileName);
@@ -781,7 +801,7 @@ export async function saveConfigRaw(
   relativePath: string,
   raw: string,
 ): Promise<ParsedConfigDocument> {
-  const rel = normalizeRelPath(relativePath);
+  const rel = assertAllowedConfigPath(relativePath);
   const fullPath = resolveInside(serverDir, rel);
   await atomicWriteFile(fullPath, raw);
   return readConfigDocument(serverDir, rel);

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import YAML from 'yaml';
 import { getServerDir, USER_AGENT } from '../config.js';
 import { store } from './store.js';
@@ -211,14 +212,20 @@ async function writeGeyserConfigValues(
   await atomicWriteFile(full, starter);
 }
 
-async function downloadBinary(url: string, destPath: string): Promise<void> {
+async function downloadBinary(url: string, destPath: string, expectedSha512?: string): Promise<void> {
   const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
   if (!res.ok) {
     throw new Error(`Failed to download ${url} (HTTP ${res.status})`);
   }
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < 1024) {
+  if (buf.length < 1024 || buf.length > 200 * 1024 * 1024) {
     throw new Error(`Downloaded file from ${url} appears invalid (${buf.length} bytes)`);
+  }
+  if (expectedSha512 && /^[a-fA-F0-9]{128}$/.test(expectedSha512)) {
+    const actual = crypto.createHash('sha512').update(buf).digest('hex').toLowerCase();
+    if (actual !== expectedSha512.toLowerCase()) {
+      throw new Error(`SHA-512 checksum mismatch for ${path.basename(destPath)}`);
+    }
   }
   await fs.mkdir(path.dirname(destPath), { recursive: true });
   await fs.writeFile(destPath, buf);
@@ -228,7 +235,7 @@ async function resolveModrinthPrimaryFile(
   projectSlug: string,
   loader: string,
   mcVersion?: string,
-): Promise<{ url: string; fileName: string } | null> {
+): Promise<{ url: string; fileName: string; sha512?: string } | null> {
   const tryFetch = async (withVersion: boolean) => {
     const params = new URLSearchParams({ loaders: JSON.stringify([loader]) });
     if (withVersion && mcVersion) {
@@ -239,12 +246,14 @@ async function resolveModrinthPrimaryFile(
     });
     if (!res.ok) return null;
     const versions = (await res.json()) as Array<{
-      files?: Array<{ url: string; filename: string; primary?: boolean }>;
+      files?: Array<{ url: string; filename: string; primary?: boolean; hashes?: { sha512?: string } }>;
     }>;
     if (!Array.isArray(versions) || versions.length === 0) return null;
     const files = versions[0].files || [];
     const primary = files.find((f) => f.primary) || files[0];
-    return primary ? { url: primary.url, fileName: primary.filename } : null;
+    if (!primary) return null;
+    const safeFileName = path.basename(primary.filename).replace(/[^a-zA-Z0-9._+-]/g, '_');
+    return { url: primary.url, fileName: safeFileName, sha512: primary.hashes?.sha512 };
   };
 
   return (await tryFetch(true)) || (await tryFetch(false));
@@ -418,7 +427,7 @@ export async function installGeyser(server: ServerConfig): Promise<GeyserStatusR
     const modrinth = await resolveModrinthPrimaryFile('geyser', loader, server.mcVersion);
     if (modrinth) {
       targetFile = modrinth.fileName;
-      await downloadBinary(modrinth.url, path.join(addonDirFull, targetFile));
+      await downloadBinary(modrinth.url, path.join(addonDirFull, targetFile), modrinth.sha512);
     } else {
       const url = `https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/${loader}`;
       await downloadBinary(url, path.join(addonDirFull, targetFile));
@@ -523,7 +532,7 @@ export async function installFloodgate(server: ServerConfig): Promise<GeyserStat
     if (!modrinth) {
       throw new Error(`Could not find a Floodgate build for ${loader} on Modrinth.`);
     }
-    await downloadBinary(modrinth.url, path.join(addonDirFull, modrinth.fileName));
+    await downloadBinary(modrinth.url, path.join(addonDirFull, modrinth.fileName), modrinth.sha512);
   }
 
   // Switch Geyser auth-type to floodgate if Geyser config exists

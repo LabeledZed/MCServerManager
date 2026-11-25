@@ -9,6 +9,11 @@ const gunzip = promisify(zlib.gunzip);
 const LOG_FILENAME_RE = /^[\w.-]+\.log(\.gz)?$/i;
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const MAX_QUERY_LENGTH = 500;
+const MAX_LOG_UNCOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB max per log file
+const SEARCH_TIMEOUT_MS = 2000;
+
+// Rejects nested repeating groups or adjacent quantifiers that cause catastrophic regex backtracking
+const UNSAFE_REDOS_RE = /(\([^)]*[+*][^)]*\))\s*(?:[+*?]|\{\d)|([+*])\2/;
 
 export interface BuildMatcherOptions {
   regex?: boolean;
@@ -35,6 +40,10 @@ export function buildMatcher(query: string, opts: BuildMatcherOptions = {}): Reg
   }
   if (query.length > MAX_QUERY_LENGTH) {
     throw new Error(`Search query must not exceed ${MAX_QUERY_LENGTH} characters`);
+  }
+
+  if (opts.regex && UNSAFE_REDOS_RE.test(query)) {
+    throw new Error('Regular expression contains nested quantifiers that could cause excessive backtracking');
   }
 
   const pattern = opts.regex ? query : escapeRegexLiteral(query);
@@ -122,19 +131,27 @@ export async function searchLogs(serverDir: string, options: SearchLogsOptions):
   let filesSearched = 0;
   let totalMatches = 0;
   let truncated = false;
+  const deadline = Date.now() + SEARCH_TIMEOUT_MS;
 
   for (const file of targetFiles) {
-    if (totalMatches >= scanCap) {
+    if (totalMatches >= scanCap || Date.now() > deadline) {
+      truncated = true;
       break;
     }
 
     let content: string;
     try {
+      const stat = await fs.lstat(file.fullPath);
+      if (stat.isSymbolicLink() || stat.size > MAX_LOG_UNCOMPRESSED_BYTES) {
+        continue;
+      }
       const rawBuf = await fs.readFile(file.fullPath);
-      const decodedBuf = file.name.toLowerCase().endsWith('.gz') ? await gunzip(rawBuf) : rawBuf;
+      const decodedBuf = file.name.toLowerCase().endsWith('.gz')
+        ? await gunzip(rawBuf, { maxOutputLength: MAX_LOG_UNCOMPRESSED_BYTES })
+        : rawBuf;
       content = stripAnsi(decodedBuf.toString('utf8'));
     } catch {
-      // Skip unreadable or corrupt files instead of failing the whole search
+      // Skip unreadable or oversized files instead of failing the whole search
       continue;
     }
 
@@ -145,6 +162,13 @@ export async function searchLogs(serverDir: string, options: SearchLogsOptions):
     }
 
     for (let i = 0; i < lines.length; i++) {
+      if (i % 1000 === 0 && i > 0) {
+        if (Date.now() > deadline) {
+          truncated = true;
+          break;
+        }
+        await new Promise<void>((r) => setImmediate(r));
+      }
       const lineText = lines[i];
       if (!matcher.test(lineText)) {
         continue;

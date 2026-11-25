@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "mcservermanagerbridge",
+  "version": "2.3.0",
+  "name": "MCServerManagerBridge",
+  "description": "Loopback management bridge for MCServerManager on Fabric & Legacy Fabric servers (1.7.10 - 26.3+)",
+  "authors": ["MCServerManager"],
+  "environment": "server",
+  "entrypoints": {
+    "server": [
+      "com.mcservermanager.bridge.mod.FabricBridgeEntrypoint"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.4.0"
+  }
+}

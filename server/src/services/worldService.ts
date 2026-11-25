@@ -2,13 +2,51 @@ import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
-import { getDirectorySize, normalizeRelPath, resolveInside } from '../utils/fsSafe.js';
+import {
+  assertSafeZipEntries,
+  getDirectorySize,
+  MAX_ZIP_SINGLE_ENTRY_BYTES,
+  MAX_ZIP_UNCOMPRESSED_BYTES,
+  normalizeRelPath,
+  resolveInside,
+} from '../utils/fsSafe.js';
 import type {
   WorldDimensionEntry,
   WorldInfo,
   WorldLayoutFormat,
   WorldSharedDataInfo,
 } from '../../../shared/types.js';
+
+const FORBIDDEN_NON_WORLD_NAMES = new Set([
+  'plugins',
+  'mods',
+  'config',
+  'libraries',
+  'logs',
+  'cache',
+  'versions',
+  'geyser-standalone',
+  'crash-reports',
+]);
+
+function assertAllowedWorldName(worldName: string): string {
+  const trimmed = (worldName || '').trim();
+  if (
+    !trimmed ||
+    trimmed === '.' ||
+    trimmed === '..' ||
+    trimmed.includes('/') ||
+    trimmed.includes('\\') ||
+    trimmed.includes('..') ||
+    !/^[a-zA-Z0-9._-]{1,64}$/.test(trimmed)
+  ) {
+    throw new Error('Invalid world folder name');
+  }
+  if (FORBIDDEN_NON_WORLD_NAMES.has(trimmed.toLowerCase())) {
+    throw new Error(`"${trimmed}" is a protected server directory, not a Minecraft world`);
+  }
+  return trimmed;
+}
 
 const RESERVED_WORLD_ROOT_DIRS = new Set([
   'dimensions',
@@ -437,16 +475,17 @@ export async function listWorlds(serverDir: string, mcVersion?: string): Promise
 }
 
 export function createWorldZipBuffer(serverDir: string, worldName: string, subPath?: string): Buffer {
-  const worldFull = resolveInside(serverDir, worldName);
-  if (!fsSync.existsSync(worldFull)) {
-    throw new Error(`World "${worldName}" not found`);
+  const safeName = assertAllowedWorldName(worldName);
+  const worldFull = resolveInside(serverDir, safeName);
+  if (!fsSync.existsSync(worldFull) || !isMinecraftWorldDir(worldFull)) {
+    throw new Error(`World "${safeName}" not found`);
   }
   const isRootSub = !subPath || subPath === '.';
   const targetFull = isRootSub ? worldFull : resolveInside(worldFull, subPath);
   if (!fsSync.existsSync(targetFull)) {
-    throw new Error(!isRootSub ? `Path "${subPath}" in world "${worldName}" not found` : `World "${worldName}" not found`);
+    throw new Error(!isRootSub ? `Path "${subPath}" in world "${safeName}" not found` : `World "${safeName}" not found`);
   }
-  const archiveRootName = !isRootSub ? path.basename(targetFull) : worldName;
+  const archiveRootName = !isRootSub ? path.basename(targetFull) : safeName;
   const zip = new AdmZip();
   zip.addLocalFolder(targetFull, archiveRootName);
   return zip.toBuffer();
@@ -455,18 +494,18 @@ export function createWorldZipBuffer(serverDir: string, worldName: string, subPa
 export async function replaceWorldFromZip(
   serverDir: string,
   worldName: string,
-  zipBuffer: Buffer,
+  zipSource: Buffer | string,
   subPath?: string,
 ): Promise<void> {
-  const safeName = worldName.replace(/[^a-zA-Z0-9._-]/g, '');
-  if (!safeName) throw new Error('Invalid world name');
+  const safeName = assertAllowedWorldName(worldName);
   const worldFull = resolveInside(serverDir, safeName);
   const cleanSubPath = subPath && subPath !== '.' ? normalizeRelPath(subPath) : '';
   const targetFull = cleanSubPath ? resolveInside(worldFull, cleanSubPath) : worldFull;
 
-  const zip = new AdmZip(zipBuffer);
+  const zip = new AdmZip(zipSource);
   const entries = zip.getEntries();
   if (entries.length === 0) throw new Error('Uploaded ZIP archive is empty');
+  assertSafeZipEntries(entries);
 
   const topDirs = new Set(
     entries
@@ -520,6 +559,7 @@ export async function replaceWorldFromZip(
   await fs.rm(targetFull, { recursive: true, force: true });
   await fs.mkdir(targetFull, { recursive: true });
 
+  let extractedBytes = 0;
   for (const entry of entries) {
     const normalized = entry.entryName.replace(/\\/g, '/');
     let innerRel = normalized;
@@ -532,14 +572,26 @@ export async function replaceWorldFromZip(
     if (entry.isDirectory) {
       await fs.mkdir(dest, { recursive: true });
     } else {
+      const data = entry.getData();
+      if (data.byteLength > MAX_ZIP_SINGLE_ENTRY_BYTES) {
+        throw new Error(`World archive entry "${innerRel}" exceeds maximum allowed file size`);
+      }
+      extractedBytes += data.byteLength;
+      if (extractedBytes > MAX_ZIP_UNCOMPRESSED_BYTES) {
+        throw new Error('World archive extraction aborted: uncompressed data exceeds 1 GB limit');
+      }
       await fs.mkdir(path.dirname(dest), { recursive: true });
-      await fs.writeFile(dest, entry.getData());
+      await fs.writeFile(dest, data);
     }
   }
 }
 
 export async function deleteWorld(serverDir: string, worldName: string, subPath?: string): Promise<void> {
-  const worldFull = resolveInside(serverDir, worldName);
+  const safeName = assertAllowedWorldName(worldName);
+  const worldFull = resolveInside(serverDir, safeName);
+  if (!fsSync.existsSync(worldFull) || !isMinecraftWorldDir(worldFull)) {
+    throw new Error(`World "${safeName}" not found`);
+  }
   const cleanSubPath = subPath && subPath !== '.' ? subPath : undefined;
   const targetFull = cleanSubPath ? resolveInside(worldFull, cleanSubPath) : worldFull;
   await fs.rm(targetFull, { recursive: true, force: true });

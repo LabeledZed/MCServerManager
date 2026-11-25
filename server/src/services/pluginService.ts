@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import AdmZip from 'adm-zip';
 import YAML from 'yaml';
 import { parse as parseToml } from 'smol-toml';
@@ -611,8 +612,16 @@ export async function deleteAddon(
   deleteConfigFolder = false,
   configFolderRel?: string | null,
 ): Promise<{ deletedImmediately: boolean; locked: boolean }> {
+  const cleanFileName = path.basename(fileName || '').trim();
+  if (
+    !cleanFileName ||
+    cleanFileName !== fileName ||
+    (!cleanFileName.toLowerCase().endsWith('.jar') && !cleanFileName.toLowerCase().endsWith('.jar.disabled'))
+  ) {
+    throw new Error('Invalid plugin/mod JAR filename');
+  }
   const addonDirName = getAddonDirName(software);
-  const jarPath = resolveInside(serverDir, `${addonDirName}/${fileName}`);
+  const jarPath = resolveInside(serverDir, `${addonDirName}/${cleanFileName}`);
 
   try {
     await fs.rm(jarPath, { force: true });
@@ -623,8 +632,20 @@ export async function deleteAddon(
     throw err;
   }
 
-  if (deleteConfigFolder && configFolderRel && configFolderRel !== 'config' && configFolderRel !== addonDirName) {
-    const cfgFull = resolveInside(serverDir, configFolderRel);
+  if (deleteConfigFolder && configFolderRel) {
+    const cleanRel = normalizeRelPath(configFolderRel);
+    const parts = cleanRel.split('/');
+    if (
+      parts.length !== 2 ||
+      (parts[0] !== 'plugins' && parts[0] !== 'config') ||
+      !parts[1] ||
+      parts[1] === '.' ||
+      parts[1] === '..' ||
+      parts[1].toLowerCase() === 'mcservermanagerbridge'
+    ) {
+      throw new Error('Addon config folder must be a direct subdirectory under plugins/ or config/');
+    }
+    const cfgFull = resolveInside(serverDir, cleanRel);
     try {
       await fs.rm(cfgFull, { recursive: true, force: true });
     } catch (err) {
@@ -773,6 +794,16 @@ export async function installFromModrinth(
   downloadUrl: string,
   fileName: string,
 ): Promise<string> {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(downloadUrl);
+  } catch {
+    throw new Error('Invalid Modrinth download URL');
+  }
+  if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'cdn.modrinth.com') {
+    throw new Error('Download URL must use https://cdn.modrinth.com/');
+  }
+
   const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._+-]/g, '_');
   if (!safeName.toLowerCase().endsWith('.jar')) {
     throw new Error('Only .jar plugin/mod files can be installed');
@@ -781,11 +812,42 @@ export async function installFromModrinth(
   const targetPath = resolveInside(serverDir, `${addonDirName}/${safeName}`);
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
 
+  // Look up expected SHA-512 hash from Modrinth version API when URL matches /data/<proj>/versions/<verId>/<file>
+  let expectedSha512: string | null = null;
+  const verMatch = parsedUrl.pathname.match(/^\/data\/[^/]+\/versions\/([^/]+)\//);
+  if (verMatch) {
+    try {
+      const verRes = await fetch(`https://api.modrinth.com/v2/version/${encodeURIComponent(verMatch[1])}`, {
+        headers: { 'User-Agent': USER_AGENT },
+      });
+      if (verRes.ok) {
+        const verData = (await verRes.json()) as {
+          files?: Array<{ url?: string; hashes?: { sha512?: string } }>;
+        };
+        const matchedFile = (verData.files || []).find((f) => f.url === downloadUrl) || verData.files?.[0];
+        if (matchedFile?.hashes?.sha512 && /^[a-fA-F0-9]{128}$/.test(matchedFile.hashes.sha512)) {
+          expectedSha512 = matchedFile.hashes.sha512.toLowerCase();
+        }
+      }
+    } catch {
+      // proceed with download if metadata endpoint is temporarily unreachable
+    }
+  }
+
   const res = await fetch(downloadUrl, { headers: { 'User-Agent': USER_AGENT } });
   if (!res.ok) {
     throw new Error(`Failed to download ${safeName} (HTTP ${res.status})`);
   }
   const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.byteLength > 200 * 1024 * 1024) {
+    throw new Error('Downloaded addon exceeds 200 MB limit');
+  }
+  if (expectedSha512) {
+    const actualSha512 = crypto.createHash('sha512').update(buf).digest('hex').toLowerCase();
+    if (actualSha512 !== expectedSha512) {
+      throw new Error(`SHA-512 checksum mismatch for ${safeName}`);
+    }
+  }
   await fs.writeFile(targetPath, buf);
   return safeName;
 }

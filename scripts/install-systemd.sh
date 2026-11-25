@@ -41,6 +41,10 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
 KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

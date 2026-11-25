@@ -3,6 +3,7 @@ import {
   discoverJavaRuntimes,
   downloadTemurinJava,
   getActiveJavaDownloads,
+  isJavaDownloadInFlight,
   recommendedJavaMajorForMc,
 } from '../services/javaService.js';
 import { requireAuth, requirePermission } from '../services/authService.js';
@@ -31,6 +32,10 @@ export function createJavaRouter(onDownloadProgress: (status: JavaDownloadStatus
     const major = Number((req.body as { major?: number }).major);
     if (![8, 17, 21, 25].includes(major)) {
       res.status(400).json({ error: 'Supported Adoptium Temurin versions: 8, 17, 21, 25' });
+      return;
+    }
+    if (isJavaDownloadInFlight(major)) {
+      res.status(409).json({ error: `Download for Java ${major} is already in progress` });
       return;
     }
 

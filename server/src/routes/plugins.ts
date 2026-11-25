@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import multer from 'multer';
 import { getServerDir } from '../config.js';
@@ -20,8 +21,12 @@ import { resolveInside } from '../utils/fsSafe.js';
 export const pluginsRouter = Router({ mergeParams: true });
 
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 200 * 1024 * 1024 },
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, _file, cb) =>
+      cb(null, `mcsm-addon-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jar`),
+  }),
+  limits: { fileSize: 200 * 1024 * 1024, files: 1 },
 });
 
 pluginsRouter.get('/', requirePermission('plugins'), async (req, res) => {
@@ -45,27 +50,32 @@ pluginsRouter.get('/', requirePermission('plugins'), async (req, res) => {
 
 pluginsRouter.post('/upload', requirePermission('plugins'), upload.single('file'), async (req, res) => {
   const srv = store.getServer(req.params.id);
-  if (!srv) {
-    res.status(404).json({ error: 'Server not found' });
-    return;
-  }
-  if (!req.file) {
-    res.status(400).json({ error: 'No .jar file uploaded' });
-    return;
-  }
-  const safeName = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9._+-]/g, '_');
-  if (!safeName.toLowerCase().endsWith('.jar')) {
-    res.status(400).json({ error: 'Only .jar files are allowed' });
-    return;
-  }
+  const uploadedPath = req.file?.path;
   try {
+    if (!srv) {
+      res.status(404).json({ error: 'Server not found' });
+      return;
+    }
+    if (!req.file || !uploadedPath) {
+      res.status(400).json({ error: 'No .jar file uploaded' });
+      return;
+    }
+    const safeName = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9._+-]/g, '_');
+    if (!safeName.toLowerCase().endsWith('.jar')) {
+      res.status(400).json({ error: 'Only .jar files are allowed' });
+      return;
+    }
     const addonDir = getAddonDirName(srv.software);
     const target = resolveInside(getServerDir(srv.id), `${addonDir}/${safeName}`);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, req.file.buffer);
+    await fs.copyFile(uploadedPath, target);
     res.status(201).json({ ok: true, fileName: safeName });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  } finally {
+    if (uploadedPath) {
+      await fs.rm(uploadedPath, { force: true }).catch(() => {});
+    }
   }
 });
 
@@ -90,6 +100,10 @@ pluginsRouter.put('/:fileName/config-folder', requirePermission('plugins'), (req
     return;
   }
   const folderName = String((req.body as { folderName?: string }).folderName || '').trim();
+  if (folderName && (folderName.includes('/') || folderName.includes('\\') || folderName.includes('..') || folderName === '.')) {
+    res.status(400).json({ error: 'Invalid config folder name' });
+    return;
+  }
   const overrides = { ...(srv.pluginConfigFolderOverrides || {}) };
   if (folderName) {
     overrides[req.params.fileName] = folderName;

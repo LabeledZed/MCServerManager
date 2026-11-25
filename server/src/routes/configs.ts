@@ -4,6 +4,7 @@ import fsSync from 'node:fs';
 import { getServerDir } from '../config.js';
 import { store } from '../services/store.js';
 import {
+  assertAllowedConfigPath,
   discoverServerConfigs,
   readConfigDocument,
   saveConfigFromTree,
@@ -116,8 +117,9 @@ configsRouter.post('/create', requirePermission('configs'), async (req, res) => 
     return;
   }
   try {
+    const safeRel = assertAllowedConfigPath(relPath);
     const serverDir = getServerDir(srv.id);
-    const full = resolveInside(serverDir, relPath);
+    const full = resolveInside(serverDir, safeRel);
     if (fsSync.existsSync(full)) {
       res.status(409).json({ error: 'File already exists' });
       return;

@@ -1,12 +1,15 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import AdmZip from 'adm-zip';
 import { RUNTIMES_DIR, USER_AGENT } from '../config.js';
 import type { JavaDownloadStatus, JavaRuntimeInfo } from '../../../shared/types.js';
 
 const activeDownloads = new Map<number, JavaDownloadStatus>();
+const inFlightDownloads = new Map<number, Promise<JavaRuntimeInfo>>();
+const MAX_JAVA_ARCHIVE_BYTES = 350 * 1024 * 1024;
 
 function parseJavaVersionOutput(output: string): { version: string; major: number; vendor: string } | null {
   const versionMatch = output.match(/version\s+"([^"]+)"/i);
@@ -171,9 +174,44 @@ export function recommendedJavaMajorForMc(mcVersion: string): number {
   return 8;
 }
 
+export async function validateAndResolveJavaPath(javaPathSetting?: string): Promise<string> {
+  const trimmed = (javaPathSetting || '').trim();
+  if (!trimmed || trimmed === 'auto') {
+    return 'auto';
+  }
+  const runtimes = await discoverJavaRuntimes();
+  const normalizedTarget = path.resolve(trimmed);
+  const targetKey = process.platform === 'win32' ? normalizedTarget.toLowerCase() : normalizedTarget;
+  const matched = runtimes.find((r) => {
+    const rk = process.platform === 'win32' ? r.path.toLowerCase() : r.path;
+    return rk === targetKey || r.id === trimmed;
+  });
+  if (matched) {
+    return matched.path;
+  }
+
+  const baseName = path.basename(normalizedTarget).toLowerCase();
+  if (baseName !== 'java' && baseName !== 'java.exe') {
+    throw new Error('Custom Java path must point to a valid java or java.exe executable');
+  }
+  if (!fsSync.existsSync(normalizedTarget)) {
+    throw new Error(`Java binary not found at path: ${normalizedTarget}`);
+  }
+  const probed = await probeJavaBinary(normalizedTarget, 'system');
+  if (!probed) {
+    throw new Error('Specified Java binary failed "java -version" verification');
+  }
+  return probed.path;
+}
+
 export async function resolveJavaForServer(javaPathSetting: string, mcVersion: string): Promise<string> {
   if (javaPathSetting && javaPathSetting !== 'auto') {
-    if (fsSync.existsSync(javaPathSetting)) return javaPathSetting;
+    try {
+      const validated = await validateAndResolveJavaPath(javaPathSetting);
+      if (validated !== 'auto') return validated;
+    } catch {
+      // fall back to discovered runtimes if saved custom path is no longer valid
+    }
   }
   const runtimes = await discoverJavaRuntimes();
   if (runtimes.length === 0) {
@@ -194,6 +232,10 @@ export function getActiveJavaDownloads(): JavaDownloadStatus[] {
   return Array.from(activeDownloads.values());
 }
 
+export function isJavaDownloadInFlight(major: number): boolean {
+  return inFlightDownloads.has(major);
+}
+
 export async function downloadTemurinJava(
   major: number,
   onProgress?: (status: JavaDownloadStatus) => void,
@@ -203,105 +245,134 @@ export async function downloadTemurinJava(
     throw new Error(`Unsupported Java major version: ${major}. Supported: ${supportedMajors.join(', ')}`);
   }
 
+  const existingPromise = inFlightDownloads.get(major);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
   const update = (status: JavaDownloadStatus) => {
     activeDownloads.set(major, status);
     onProgress?.(status);
   };
 
-  try {
-    update({ major, stage: 'downloading', percent: 2, message: `Querying Adoptium Temurin Java ${major}...` });
+  const task = (async (): Promise<JavaRuntimeInfo> => {
+    try {
+      update({ major, stage: 'downloading', percent: 2, message: `Querying Adoptium Temurin Java ${major}...` });
 
-    const osName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux';
-    const archName = process.arch === 'arm64' ? 'aarch64' : 'x64';
-    const apiUrl = `https://api.adoptium.net/v3/assets/latest/${major}/hotspot?architecture=${archName}&image_type=jre&os=${osName}&vendor=eclipse`;
+      const osName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux';
+      const archName = process.arch === 'arm64' ? 'aarch64' : 'x64';
+      const apiUrl = `https://api.adoptium.net/v3/assets/latest/${major}/hotspot?architecture=${archName}&image_type=jre&os=${osName}&vendor=eclipse`;
 
-    const metaRes = await fetch(apiUrl, { headers: { 'User-Agent': USER_AGENT } });
-    if (!metaRes.ok) {
-      throw new Error(`Adoptium API error (${metaRes.status})`);
-    }
-    const assets = (await metaRes.json()) as Array<{
-      binary?: { package?: { link?: string; name?: string; size?: number } };
-    }>;
-
-    // Fallback to JDK if JRE isn't available for this version/platform
-    let pkg = assets[0]?.binary?.package;
-    if (!pkg?.link) {
-      const jdkUrl = `https://api.adoptium.net/v3/assets/latest/${major}/hotspot?architecture=${archName}&image_type=jdk&os=${osName}&vendor=eclipse`;
-      const jdkRes = await fetch(jdkUrl, { headers: { 'User-Agent': USER_AGENT } });
-      if (jdkRes.ok) {
-        const jdkAssets = (await jdkRes.json()) as typeof assets;
-        pkg = jdkAssets[0]?.binary?.package;
+      const metaRes = await fetch(apiUrl, { headers: { 'User-Agent': USER_AGENT } });
+      if (!metaRes.ok) {
+        throw new Error(`Adoptium API error (${metaRes.status})`);
       }
-    }
+      const assets = (await metaRes.json()) as Array<{
+        binary?: { package?: { link?: string; name?: string; size?: number; checksum?: string } };
+      }>;
 
-    if (!pkg?.link || !pkg.name) {
-      throw new Error(`No Adoptium Temurin ${major} binary found for ${osName}/${archName}`);
-    }
-
-    update({ major, stage: 'downloading', percent: 5, message: `Downloading ${pkg.name}...` });
-    const dlRes = await fetch(pkg.link, { headers: { 'User-Agent': USER_AGENT } });
-    if (!dlRes.ok || !dlRes.body) {
-      throw new Error(`Download failed (${dlRes.status})`);
-    }
-
-    const totalBytes = Number(dlRes.headers.get('content-length')) || pkg.size || 0;
-    const chunks: Uint8Array[] = [];
-    let downloaded = 0;
-
-    const reader = dlRes.body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      downloaded += value.byteLength;
-      if (totalBytes > 0) {
-        const pct = Math.min(82, 5 + Math.round((downloaded / totalBytes) * 77));
-        update({
-          major,
-          stage: 'downloading',
-          percent: pct,
-          message: `Downloading Java ${major}: ${(downloaded / 1048576).toFixed(1)} / ${(totalBytes / 1048576).toFixed(1)} MB`,
-        });
+      // Fallback to JDK if JRE isn't available for this version/platform
+      let pkg = assets[0]?.binary?.package;
+      if (!pkg?.link) {
+        const jdkUrl = `https://api.adoptium.net/v3/assets/latest/${major}/hotspot?architecture=${archName}&image_type=jdk&os=${osName}&vendor=eclipse`;
+        const jdkRes = await fetch(jdkUrl, { headers: { 'User-Agent': USER_AGENT } });
+        if (jdkRes.ok) {
+          const jdkAssets = (await jdkRes.json()) as typeof assets;
+          pkg = jdkAssets[0]?.binary?.package;
+        }
       }
-    }
 
-    const archiveBuf = Buffer.concat(chunks);
-    const targetDir = path.join(RUNTIMES_DIR, `temurin-${major}`);
-    await fs.rm(targetDir, { recursive: true, force: true });
-    await fs.mkdir(targetDir, { recursive: true });
+      if (!pkg?.link || !pkg.name) {
+        throw new Error(`No Adoptium Temurin ${major} binary found for ${osName}/${archName}`);
+      }
 
-    update({ major, stage: 'extracting', percent: 86, message: `Extracting Temurin Java ${major}...` });
+      const safePkgName = path.basename(pkg.name).replace(/[^a-zA-Z0-9._+-]/g, '_');
+      update({ major, stage: 'downloading', percent: 5, message: `Downloading ${safePkgName}...` });
+      const dlRes = await fetch(pkg.link, { headers: { 'User-Agent': USER_AGENT } });
+      if (!dlRes.ok || !dlRes.body) {
+        throw new Error(`Download failed (${dlRes.status})`);
+      }
 
-    if (pkg.name.endsWith('.zip')) {
-      const zip = new AdmZip(archiveBuf);
-      zip.extractAllTo(targetDir, true);
-    } else {
-      const archiveFile = path.join(targetDir, pkg.name);
-      await fs.writeFile(archiveFile, archiveBuf);
-      await new Promise<void>((resolve, reject) => {
-        execFile('tar', ['-xzf', archiveFile, '-C', targetDir], (err) => {
-          if (err) reject(err);
-          else resolve();
+      const totalBytes = Number(dlRes.headers.get('content-length')) || pkg.size || 0;
+      if (totalBytes > MAX_JAVA_ARCHIVE_BYTES) {
+        throw new Error(`Java archive size (${totalBytes} bytes) exceeds safety limit`);
+      }
+      const chunks: Uint8Array[] = [];
+      let downloaded = 0;
+
+      const reader = dlRes.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        downloaded += value.byteLength;
+        if (downloaded > MAX_JAVA_ARCHIVE_BYTES) {
+          await reader.cancel().catch(() => {});
+          throw new Error('Java archive download exceeded maximum allowed size');
+        }
+        chunks.push(value);
+        if (totalBytes > 0) {
+          const pct = Math.min(82, 5 + Math.round((downloaded / totalBytes) * 77));
+          update({
+            major,
+            stage: 'downloading',
+            percent: pct,
+            message: `Downloading Java ${major}: ${(downloaded / 1048576).toFixed(1)} / ${(totalBytes / 1048576).toFixed(1)} MB`,
+          });
+        }
+      }
+
+      const archiveBuf = Buffer.concat(chunks);
+      if (pkg.checksum && /^[a-fA-F0-9]{64}$/.test(pkg.checksum.trim())) {
+        const actualSha256 = crypto.createHash('sha256').update(archiveBuf).digest('hex');
+        if (actualSha256.toLowerCase() !== pkg.checksum.trim().toLowerCase()) {
+          throw new Error(
+            `SHA-256 checksum mismatch for ${safePkgName} (expected ${pkg.checksum}, got ${actualSha256})`,
+          );
+        }
+      }
+
+      const targetDir = path.join(RUNTIMES_DIR, `temurin-${major}`);
+      await fs.rm(targetDir, { recursive: true, force: true });
+      await fs.mkdir(targetDir, { recursive: true });
+
+      update({ major, stage: 'extracting', percent: 86, message: `Extracting Temurin Java ${major}...` });
+
+      if (safePkgName.endsWith('.zip')) {
+        const zip = new AdmZip(archiveBuf);
+        zip.extractAllTo(targetDir, true);
+      } else {
+        const archiveFile = path.join(targetDir, safePkgName);
+        await fs.writeFile(archiveFile, archiveBuf);
+        await new Promise<void>((resolve, reject) => {
+          execFile('tar', ['-xzf', archiveFile, '--no-same-owner', '-C', targetDir], (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
         });
-      });
-      await fs.rm(archiveFile, { force: true });
-    }
+        await fs.rm(archiveFile, { force: true });
+      }
 
-    const bins = await findJavaExesInBaseDir(targetDir, 3);
-    if (bins.length === 0) {
-      throw new Error('Extracted archive did not contain a java binary');
-    }
-    const info = await probeJavaBinary(bins[0], 'managed');
-    if (!info) {
-      throw new Error('Downloaded Java binary failed version probe');
-    }
+      const bins = await findJavaExesInBaseDir(targetDir, 3);
+      if (bins.length === 0) {
+        throw new Error('Extracted archive did not contain a java binary');
+      }
+      const info = await probeJavaBinary(bins[0], 'managed');
+      if (!info) {
+        throw new Error('Downloaded Java binary failed version probe');
+      }
 
-    update({ major, stage: 'done', percent: 100, message: `Installed ${info.vendor} ${info.version}` });
-    setTimeout(() => activeDownloads.delete(major), 15000);
-    return info;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    update({ major, stage: 'error', percent: 0, message: msg });
-    throw err;
-  }
+      update({ major, stage: 'done', percent: 100, message: `Installed ${info.vendor} ${info.version}` });
+      setTimeout(() => activeDownloads.delete(major), 15000);
+      return info;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      update({ major, stage: 'error', percent: 0, message: msg });
+      throw err;
+    } finally {
+      inFlightDownloads.delete(major);
+    }
+  })();
+
+  inFlightDownloads.set(major, task);
+  return task;
 }

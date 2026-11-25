@@ -69,8 +69,8 @@ export function AccessControlPage({ onNotify, onAuthSettingChanged }: AccessCont
       onNotify(
         'success',
         reqAuth
-          ? 'Login protection enabled (update the owner username & password below if still using defaults!)'
-          : 'Switched to Local Quick Access mode (auto-signed in as owner)',
+          ? 'Login protection enabled (listening on 0.0.0.0 — set your owner password below if needed!)'
+          : 'Switched to Local Quick Access mode (listening on 127.0.0.1 only, auto-signed in as owner)',
       );
       onAuthSettingChanged();
     } catch (err) {
@@ -176,8 +176,9 @@ export function AccessControlPage({ onNotify, onAuthSettingChanged }: AccessCont
                 label="Require login"
               />
               <span className="field-hint">
-                Default owner credentials when first enabled: <code>admin</code> / <code>admin</code>. Click{' '}
-                <strong>Edit</strong> on the owner account below to change them.
+                When login is disabled, the panel listens strictly on <code>127.0.0.1</code>. Enabling login binds to{' '}
+                <code>0.0.0.0</code> for LAN/remote access (initial owner bootstrap password is printed in the server
+                console on first launch; click <strong>Edit Owner</strong> below to set a custom password).
               </span>
             </div>
 
@@ -320,13 +321,14 @@ export function AccessControlPage({ onNotify, onAuthSettingChanged }: AccessCont
               />
             </div>
             <div className="field">
-              <label htmlFor="nu-pass">Password</label>
+              <label htmlFor="nu-pass">Password (min 8 chars)</label>
               <input
                 id="nu-pass"
                 type="password"
                 className="input"
                 required
-                minLength={4}
+                minLength={8}
+                maxLength={256}
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -417,12 +419,13 @@ export function AccessControlPage({ onNotify, onAuthSettingChanged }: AccessCont
                 />
               </div>
               <div className="field">
-                <label htmlFor="eu-pass">New Password (optional)</label>
+                <label htmlFor="eu-pass">New Password (optional, min 8 chars)</label>
                 <input
                   id="eu-pass"
                   type="password"
                   className="input"
-                  minLength={4}
+                  minLength={8}
+                  maxLength={256}
                   autoComplete="new-password"
                   placeholder="Leave blank to keep current"
                   value={editPassword}

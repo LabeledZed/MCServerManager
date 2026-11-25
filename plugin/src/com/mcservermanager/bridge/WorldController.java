@@ -2,6 +2,7 @@ package com.mcservermanager.bridge;
 
 import java.io.File;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,7 +31,10 @@ public final class WorldController {
     }
 
     public static boolean isValidWorldName(String name) {
-        return name != null && name.matches("^(?:[a-z0-9_.-]+:)?[a-zA-Z0-9_.-]{1,64}$");
+        if (name == null || name.isEmpty() || ".".equals(name) || "..".equals(name) || name.contains("..")) {
+            return false;
+        }
+        return name.matches("^(?:[a-z0-9_-]+:)?[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$");
     }
 
     /**
@@ -349,10 +353,12 @@ public final class WorldController {
         }
 
         File levelDir = getLevelDirectory();
+        File containerDir = Bukkit.getWorldContainer();
         boolean deletedAny = false;
         if (folderToDelete != null && folderToDelete.exists()) {
-            // Never delete the top-level 26.1+ level container folder itself!
-            if (levelDir == null || !folderToDelete.getAbsolutePath().equalsIgnoreCase(levelDir.getAbsolutePath())) {
+            // Never delete the top-level 26.1+ level container folder or world container root itself!
+            File guardRoot = levelDir != null ? levelDir : containerDir;
+            if (isSafeChildDirectory(guardRoot, folderToDelete)) {
                 deletedAny = deleteRecursively(folderToDelete);
             }
         }
@@ -362,19 +368,31 @@ public final class WorldController {
             if (dimDir != null) {
                 String keyPart = toMinecraftDimensionKeyPart(worldName);
                 File modernFolder = new File(dimDir, keyPart);
-                if (modernFolder.exists() && modernFolder.isDirectory()) {
+                if (modernFolder.exists() && modernFolder.isDirectory() && isSafeChildDirectory(dimDir, modernFolder)) {
                     deletedAny = deleteRecursively(modernFolder) || deletedAny;
                 }
             }
         } else {
             String legacyName = toLegacyBukkitWorldName(worldName);
-            File classicFolder = new File(Bukkit.getWorldContainer(), legacyName);
-            if (classicFolder.exists() && classicFolder.isDirectory()) {
+            File classicFolder = new File(containerDir, legacyName);
+            if (classicFolder.exists() && classicFolder.isDirectory() && isSafeChildDirectory(containerDir, classicFolder)) {
                 deletedAny = deleteRecursively(classicFolder) || deletedAny;
             }
         }
 
         return deletedAny || loaded != null ? null : "World folder not found: " + worldName;
+    }
+
+    private static boolean isSafeChildDirectory(File parentDir, File childDir) {
+        if (parentDir == null || childDir == null) return false;
+        try {
+            Path parentPath = parentDir.toPath().toAbsolutePath().normalize();
+            Path childPath = childDir.toPath().toAbsolutePath().normalize();
+            if (Files.isSymbolicLink(childPath)) return false;
+            return childPath.startsWith(parentPath) && !childPath.equals(parentPath);
+        } catch (Throwable ex) {
+            return false;
+        }
     }
 
     /**
@@ -494,6 +512,11 @@ public final class WorldController {
 
     private static boolean deleteRecursively(File f) {
         if (f == null || !f.exists()) return false;
+        try {
+            if (Files.isSymbolicLink(f.toPath())) {
+                return f.delete();
+            }
+        } catch (Throwable ignored) {}
         if (f.isDirectory()) {
             File[] children = f.listFiles();
             if (children != null) {

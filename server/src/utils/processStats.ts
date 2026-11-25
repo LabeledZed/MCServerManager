@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -183,9 +184,9 @@ export async function findOrphanedServerPids(query: OrphanProcessQuery): Promise
       const hasMarker = markerRe.test(cmd);
       const hasServerDir = cmdLower.includes(dirLower) || cmdSlashLower.includes(dirSlashLower);
       const matchesLastPid = Boolean(query.lastPid && pid === query.lastPid && cmdLower.includes(jarLower));
-      const matchesPort = portPidSet.has(pid);
+      const matchesPortAndJar = portPidSet.has(pid) && (hasServerDir || cmdLower.includes(`-dmcsm.serverid=`));
 
-      if (hasMarker || hasServerDir || matchesLastPid || matchesPort) {
+      if (hasMarker || hasServerDir || matchesLastPid || matchesPortAndJar) {
         matched.push(pid);
       }
     }
@@ -220,10 +221,9 @@ export async function findOrphanedServerPids(query: OrphanProcessQuery): Promise
     const hasMarker = markerRe.test(cmd);
     const hasServerDir = cmd.includes(resolvedDir);
     const matchesLastPid = Boolean(query.lastPid && pid === query.lastPid && cmd.includes(jarToken));
-    const matchesPort = portPidSet.has(pid);
 
     let matchesCwd = false;
-    if (!hasMarker && !hasServerDir && !matchesLastPid && !matchesPort) {
+    if (!hasMarker && !hasServerDir && !matchesLastPid) {
       try {
         const cwd = await fs.readlink(`/proc/${pid}/cwd`);
         matchesCwd = path.resolve(cwd) === resolvedDir;
@@ -232,11 +232,31 @@ export async function findOrphanedServerPids(query: OrphanProcessQuery): Promise
       }
     }
 
-    if (hasMarker || hasServerDir || matchesLastPid || matchesPort || matchesCwd) {
+    const matchesPortAndOwned = portPidSet.has(pid) && (hasServerDir || matchesCwd || cmd.includes('-Dmcsm.serverId='));
+
+    if (hasMarker || hasServerDir || matchesLastPid || matchesCwd || matchesPortAndOwned) {
       matched.push(pid);
     }
   }
   return [...new Set(matched)];
+}
+
+export function isLocalTcpPortInUse(port: number, timeoutMs = 400): Promise<boolean> {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: '127.0.0.1', port });
+    let settled = false;
+    const done = (inUse: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(inUse);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.on('connect', () => done(true));
+    socket.on('timeout', () => done(false));
+    socket.on('error', () => done(false));
+  });
 }
 
 /**

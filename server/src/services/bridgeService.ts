@@ -272,7 +272,9 @@ export async function installBridgePlugin(server: ServerConfig): Promise<{ port:
     `token=${server.bridgeToken}`,
     '',
   ].join('\n');
-  await atomicWriteFile(path.join(dataDir, 'bridge.properties'), props);
+  const propsPath = path.join(dataDir, 'bridge.properties');
+  await atomicWriteFile(propsPath, props);
+  await fs.chmod(propsPath, 0o600).catch(() => {});
 
   return { port: server.bridgePort };
 }
@@ -433,7 +435,12 @@ export async function sendBridgeBroadcast(server: ServerConfig, message: string)
 
 // ---------- Native Multiverse / Realms / Colored Portals / Per-World Plugins ----------
 
-const WORLD_NAME_RE = /^(?:[a-z0-9_.-]+:)?[a-zA-Z0-9_.-]{1,64}$/;
+const WORLD_NAME_RE = /^(?:[a-z0-9_-]+:)?[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/;
+
+function isValidRealmWorldName(name: string): boolean {
+  if (!name || name === '.' || name === '..' || name.includes('..')) return false;
+  return WORLD_NAME_RE.test(name);
+}
 
 export function normalizeWorldNameForVersion(raw: string, is26Plus: boolean): string {
   const trimmed = (raw || '').trim();
@@ -537,7 +544,7 @@ function normalizeRealmsConfig(raw: Partial<RealmsConfig> | null | undefined, is
 
   const worlds: ManagedWorldConfig[] = Array.isArray(raw.worlds)
     ? raw.worlds
-        .filter((w): w is ManagedWorldConfig => Boolean(w && typeof w.name === 'string' && WORLD_NAME_RE.test(w.name.trim())))
+        .filter((w): w is ManagedWorldConfig => Boolean(w && typeof w.name === 'string' && isValidRealmWorldName(w.name.trim())))
         .map((w) => ({
           name: normalizeWorldNameForVersion(w.name.trim(), is26Plus),
           environment: w.environment === 'NETHER' || w.environment === 'THE_END' ? w.environment : 'NORMAL',
@@ -817,7 +824,7 @@ export async function createRealmWorld(
   payload: CreateRealmWorldPayload,
 ): Promise<{ ok: boolean; created: string[]; live: boolean; state: RealmsStateResponse }> {
   const name = (payload.name || '').trim();
-  if (!WORLD_NAME_RE.test(name)) {
+  if (!isValidRealmWorldName(name)) {
     throw new Error('World name must be 1-64 characters using letters, numbers, underscores, or hyphens.');
   }
 
@@ -834,10 +841,10 @@ export async function createRealmWorld(
   if (payload.bundle) {
     const netherName = (payload.netherName || `${name}_nether`).trim();
     const endName = (payload.endName || `${name}_the_end`).trim();
-    if (payload.createNether !== false && !WORLD_NAME_RE.test(netherName)) {
+    if (payload.createNether !== false && !isValidRealmWorldName(netherName)) {
       throw new Error('Invalid Nether world name');
     }
-    if (payload.createEnd !== false && !WORLD_NAME_RE.test(endName)) {
+    if (payload.createEnd !== false && !isValidRealmWorldName(endName)) {
       throw new Error('Invalid End world name');
     }
 
@@ -939,7 +946,7 @@ export async function loadRealmWorld(
   worldName: string,
   environment?: 'NORMAL' | 'NETHER' | 'THE_END',
 ): Promise<RealmsStateResponse> {
-  if (!WORLD_NAME_RE.test(worldName)) throw new Error('Invalid world name');
+  if (!isValidRealmWorldName(worldName)) throw new Error('Invalid world name');
 
   const config = await readRealmsConfigFromDisk(server.id);
   const existing = config.worlds.find((w) => w.name.toLowerCase() === worldName.toLowerCase());
@@ -979,7 +986,7 @@ export async function loadRealmWorld(
 }
 
 export async function unloadRealmWorld(server: ServerConfig, worldName: string, save = true): Promise<RealmsStateResponse> {
-  if (!WORLD_NAME_RE.test(worldName)) throw new Error('Invalid world name');
+  if (!isValidRealmWorldName(worldName)) throw new Error('Invalid world name');
   await bridgeRequest(server, `/realms/worlds/${encodeURIComponent(worldName)}/unload`, 'POST', { save }, 20000);
   const config = await readRealmsConfigFromDisk(server.id);
   const mw = config.worlds.find((w) => w.name.toLowerCase() === worldName.toLowerCase());
@@ -991,7 +998,7 @@ export async function unloadRealmWorld(server: ServerConfig, worldName: string, 
 }
 
 export async function deleteRealmWorld(server: ServerConfig, worldName: string): Promise<RealmsStateResponse> {
-  if (!WORLD_NAME_RE.test(worldName)) throw new Error('Invalid world name');
+  if (!isValidRealmWorldName(worldName)) throw new Error('Invalid world name');
   const is26Plus = isMcVersion26OrNewer(server.mcVersion);
   const normalizedTarget = normalizeWorldNameForVersion(worldName, is26Plus);
   if (normalizedTarget === 'minecraft:overworld' || (!is26Plus && normalizedTarget.toLowerCase() === 'world')) {

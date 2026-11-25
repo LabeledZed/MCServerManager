@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import type { ConfigFormat } from '../../../shared/types.js';
 
 const BINARY_EXTENSIONS = new Set([
@@ -12,7 +13,8 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 /**
- * Safely resolve a relative path strictly inside a root directory, preventing path traversal.
+ * Safely resolve a relative path strictly inside a root directory, preventing lexical
+ * path traversal as well as symlink / Windows NTFS junction escapes.
  */
 export function resolveInside(rootDir: string, relativePath: string): string {
   const normalizedRoot = path.resolve(rootDir);
@@ -22,7 +24,61 @@ export function resolveInside(rootDir: string, relativePath: string): string {
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new Error('Access denied: path escapes root directory');
   }
+
+  if (fsSync.existsSync(normalizedRoot)) {
+    const realRoot = fsSync.realpathSync(normalizedRoot);
+    const segments = rel ? rel.split(path.sep).filter(Boolean) : [];
+    let cur = normalizedRoot;
+    for (const seg of segments) {
+      cur = path.join(cur, seg);
+      if (!fsSync.existsSync(cur)) {
+        break;
+      }
+      const lstat = fsSync.lstatSync(cur);
+      if (lstat.isSymbolicLink()) {
+        throw new Error('Access denied: symbolic links are not permitted inside server directory');
+      }
+      const realCur = fsSync.realpathSync(cur);
+      const realRel = path.relative(realRoot, realCur);
+      if (realRel.startsWith('..') || path.isAbsolute(realRel)) {
+        throw new Error('Access denied: resolved real path escapes root directory');
+      }
+    }
+  }
+
   return resolved;
+}
+
+export interface ZipEntryLike {
+  entryName: string;
+  isDirectory: boolean;
+  header?: { size?: number };
+}
+
+export const MAX_ZIP_ENTRIES = 10_000;
+export const MAX_ZIP_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024; // 1 GB
+export const MAX_ZIP_SINGLE_ENTRY_BYTES = 512 * 1024 * 1024; // 512 MB
+
+export function assertSafeZipEntries(
+  entries: ZipEntryLike[],
+  maxEntries = MAX_ZIP_ENTRIES,
+  maxTotalBytes = MAX_ZIP_UNCOMPRESSED_BYTES,
+  maxEntryBytes = MAX_ZIP_SINGLE_ENTRY_BYTES,
+): void {
+  if (entries.length > maxEntries) {
+    throw new Error(`Archive contains too many entries (${entries.length} > ${maxEntries})`);
+  }
+  let totalUncompressed = 0;
+  for (const entry of entries) {
+    const declaredSize = Number(entry.header?.size ?? 0);
+    if (!Number.isFinite(declaredSize) || declaredSize < 0 || declaredSize > maxEntryBytes) {
+      throw new Error(`Archive entry "${entry.entryName}" exceeds maximum allowed uncompressed size`);
+    }
+    totalUncompressed += declaredSize;
+    if (totalUncompressed > maxTotalBytes) {
+      throw new Error('Archive total uncompressed size exceeds safety limit (potential zip bomb)');
+    }
+  }
 }
 
 export function normalizeRelPath(relPath: string): string {
@@ -82,6 +138,7 @@ export async function getDirectorySize(dirPath: string, maxDepth = 6): Promise<n
       return;
     }
     for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) {
         await walk(full, depth + 1);

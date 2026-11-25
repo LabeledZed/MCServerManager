@@ -258,6 +258,27 @@ export async function inspectExistingServerFolder(rawPath: string): Promise<Insp
     hasPurpurConfig ||
     hasLeafConfig;
 
+  const hasValidServerMarker =
+    jarCandidates.length > 0 ||
+    fsSync.existsSync(propsPath) ||
+    fsSync.existsSync(velocityTomlPath) ||
+    fsSync.existsSync(eulaPath) ||
+    hasNeoForgeLib ||
+    hasForgeLib ||
+    hasFabricConfig ||
+    hasPaperConfig ||
+    hasSpigotConfig ||
+    hasPurpurConfig ||
+    hasLeafConfig ||
+    hasFoliaConfig ||
+    worldCount > 0;
+
+  if (!hasValidServerMarker) {
+    throw new Error(
+      'The specified folder does not contain recognizable Minecraft or Velocity server files (no server JAR, server.properties, velocity.toml, or worlds found).',
+    );
+  }
+
   const sizeBytes = await getDirectorySize(resolved, 7);
 
   return {

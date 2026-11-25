@@ -1,9 +1,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { USER_AGENT } from '../config.js';
 import type { ServerSoftware } from '../../../shared/types.js';
 import { resolveJavaForServer } from './javaService.js';
+
+const MAX_SERVER_JAR_BYTES = 300 * 1024 * 1024;
+
+interface ExpectedDigest {
+  algorithm: 'sha256' | 'sha1';
+  hex: string;
+}
 
 interface CacheEntry<T> {
   data: T;
@@ -27,27 +35,44 @@ async function downloadToFile(
   url: string,
   destPath: string,
   onProgress?: (percent: number, message: string) => void,
+  expectedDigest?: ExpectedDigest,
 ): Promise<void> {
   const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
   if (!res.ok || !res.body) {
     throw new Error(`Failed to download ${url} (HTTP ${res.status})`);
   }
   const total = Number(res.headers.get('content-length')) || 0;
+  if (total > MAX_SERVER_JAR_BYTES) {
+    throw new Error(`Download size (${total} bytes) exceeds safety limit`);
+  }
   const chunks: Uint8Array[] = [];
   let loaded = 0;
   const reader = res.body.getReader();
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    chunks.push(value);
     loaded += value.byteLength;
+    if (loaded > MAX_SERVER_JAR_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw new Error('Download exceeded maximum allowed file size');
+    }
+    chunks.push(value);
     if (total > 0) {
       const pct = Math.min(92, 10 + Math.round((loaded / total) * 80));
       onProgress?.(pct, `Downloading server JAR (${(loaded / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB)`);
     }
   }
+  const fullBuf = Buffer.concat(chunks);
+  if (expectedDigest && expectedDigest.hex) {
+    const actual = crypto.createHash(expectedDigest.algorithm).update(fullBuf).digest('hex').toLowerCase();
+    if (actual !== expectedDigest.hex.trim().toLowerCase()) {
+      throw new Error(
+        `Integrity check failed (${expectedDigest.algorithm.toUpperCase()} mismatch for ${path.basename(destPath)})`,
+      );
+    }
+  }
   await fs.mkdir(path.dirname(destPath), { recursive: true });
-  await fs.writeFile(destPath, Buffer.concat(chunks));
+  await fs.writeFile(destPath, fullBuf);
 }
 
 function sortMcVersionsDesc(versions: string[]): string[] {
@@ -237,7 +262,7 @@ export async function installServerSoftware(
       Array<{
         id: number;
         channel: string;
-        downloads: Record<string, { name: string; url: string }>;
+        downloads: Record<string, { name: string; url: string; checksums?: { sha256?: string } }>;
       }>
     >(`https://fill.papermc.io/v3/projects/${software}/versions/${encodeURIComponent(mcVersion)}/builds`);
 
@@ -253,7 +278,13 @@ export async function installServerSoftware(
     }
 
     const jarName = `${software}-${mcVersion}-${preferred.id}.jar`;
-    await downloadToFile(dl.url, path.join(serverDir, jarName), onProgress);
+    const sha256 = dl.checksums?.sha256;
+    await downloadToFile(
+      dl.url,
+      path.join(serverDir, jarName),
+      onProgress,
+      sha256 && /^[a-fA-F0-9]{64}$/.test(sha256) ? { algorithm: 'sha256', hex: sha256 } : undefined,
+    );
     onProgress?.(100, `Installed ${jarName}`);
     return { jarFile: jarName, build: String(preferred.id) };
   }
@@ -276,7 +307,7 @@ export async function installServerSoftware(
     const data = await fetchJson<{
       builds: Array<{
         build: number;
-        downloads: Record<string, { name: string }>;
+        downloads: Record<string, { name: string; sha256?: string }>;
       }>;
     }>(`https://api.leafmc.one/v2/projects/leaf/versions/${encodeURIComponent(mcVersion)}/builds`);
     if (!Array.isArray(data.builds) || data.builds.length === 0) {
@@ -287,10 +318,16 @@ export async function installServerSoftware(
     if (!dl?.name) {
       throw new Error(`Could not resolve Leaf download filename for build #${latest.build}`);
     }
+    const safeLeafName = path.basename(dl.name).replace(/[^a-zA-Z0-9._+-]/g, '_');
     const url = `https://api.leafmc.one/v2/projects/leaf/versions/${encodeURIComponent(mcVersion)}/builds/${latest.build}/downloads/${encodeURIComponent(dl.name)}`;
-    await downloadToFile(url, path.join(serverDir, dl.name), onProgress);
-    onProgress?.(100, `Installed ${dl.name}`);
-    return { jarFile: dl.name, build: String(latest.build) };
+    await downloadToFile(
+      url,
+      path.join(serverDir, safeLeafName),
+      onProgress,
+      dl.sha256 && /^[a-fA-F0-9]{64}$/.test(dl.sha256) ? { algorithm: 'sha256', hex: dl.sha256 } : undefined,
+    );
+    onProgress?.(100, `Installed ${safeLeafName}`);
+    return { jarFile: safeLeafName, build: String(latest.build) };
   }
 
   if (software === 'vanilla') {
@@ -300,11 +337,16 @@ export async function installServerSoftware(
     );
     const verMeta = manifest.versions.find((v) => v.id === mcVersion);
     if (!verMeta) throw new Error(`Vanilla version ${mcVersion} not found`);
-    const details = await fetchJson<{ downloads?: { server?: { url: string } } }>(verMeta.url);
-    const serverUrl = details.downloads?.server?.url;
-    if (!serverUrl) throw new Error(`Vanilla ${mcVersion} does not have a server JAR`);
+    const details = await fetchJson<{ downloads?: { server?: { url: string; sha1?: string } } }>(verMeta.url);
+    const serverDl = details.downloads?.server;
+    if (!serverDl?.url) throw new Error(`Vanilla ${mcVersion} does not have a server JAR`);
     const jarName = `vanilla-${mcVersion}.jar`;
-    await downloadToFile(serverUrl, path.join(serverDir, jarName), onProgress);
+    await downloadToFile(
+      serverDl.url,
+      path.join(serverDir, jarName),
+      onProgress,
+      serverDl.sha1 && /^[a-fA-F0-9]{40}$/.test(serverDl.sha1) ? { algorithm: 'sha1', hex: serverDl.sha1 } : undefined,
+    );
     onProgress?.(100, `Installed ${jarName}`);
     return { jarFile: jarName };
   }

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import fs from 'node:fs/promises';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import multer from 'multer';
 import { getServerDir } from '../config.js';
@@ -20,12 +22,29 @@ import {
 } from '../services/backupService.js';
 import { scheduleService, validateTrigger } from '../services/scheduleService.js';
 import { requirePermission } from '../services/authService.js';
-import type { ScheduleAction, ScheduledTask, ScheduleTrigger } from '../../../shared/types.js';
+import type { Permission, ScheduleAction, ScheduledTask, ScheduleTrigger, UserAccount } from '../../../shared/types.js';
 
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 * 1024 },
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, _file, cb) =>
+      cb(null, `mcsm-world-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.zip`),
+  }),
+  limits: { fileSize: 500 * 1024 * 1024, files: 1 },
 });
+
+function requiredPermissionForScheduleAction(action: ScheduleAction): Permission {
+  if (action === 'command') return 'console';
+  if (action === 'backup' || action === 'backup_worlds') return 'backups';
+  return 'power';
+}
+
+function hasScheduleActionPermission(user: UserAccount | null | undefined, action: ScheduleAction): boolean {
+  if (!user) return false;
+  if (user.role === 'owner') return true;
+  const needed = requiredPermissionForScheduleAction(action);
+  return user.permissions.includes(needed);
+}
 
 // ---------- Worlds Router ----------
 export const worldsRouter = Router({ mergeParams: true });
@@ -50,8 +69,9 @@ worldsRouter.get('/:worldName/download', requirePermission('backups'), (req, res
   try {
     const buf = createWorldZipBuffer(getServerDir(srv.id), req.params.worldName, subPath);
     const suffix = subPath ? `-${subPath.replace(/[\\/]+/g, '-')}` : '';
+    const safeFileName = `${req.params.worldName}${suffix}.zip`.replace(/[^a-zA-Z0-9._-]/g, '_');
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${req.params.worldName}${suffix}.zip"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFileName}"`);
     res.send(buf);
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -60,28 +80,30 @@ worldsRouter.get('/:worldName/download', requirePermission('backups'), (req, res
 
 worldsRouter.post('/:worldName/upload', requirePermission('backups'), upload.single('file'), async (req, res) => {
   const srv = store.getServer(req.params.id);
-  if (!srv) {
-    res.status(404).json({ error: 'Server not found' });
-    return;
-  }
-  if (serverManager.isRunning(srv.id)) {
-    res.status(409).json({ error: 'Stop the server before replacing a world or dimension' });
-    return;
-  }
-  if (!req.file) {
-    res.status(400).json({ error: 'World .zip file is required' });
-    return;
-  }
-  const subPath = typeof req.query.subPath === 'string' && req.query.subPath.trim() ? req.query.subPath.trim() : undefined;
-  const registerRealmWorld =
-    typeof req.query.registerRealmWorld === 'string' && req.query.registerRealmWorld.trim()
-      ? req.query.registerRealmWorld.trim()
-      : undefined;
-  const envRaw = typeof req.query.environment === 'string' ? req.query.environment.trim().toUpperCase() : 'NORMAL';
-  const environment: 'NORMAL' | 'NETHER' | 'THE_END' =
-    envRaw === 'NETHER' || envRaw === 'THE_END' ? envRaw : 'NORMAL';
+  const uploadedPath = req.file?.path;
   try {
-    await replaceWorldFromZip(getServerDir(srv.id), req.params.worldName, req.file.buffer, subPath);
+    if (!srv) {
+      res.status(404).json({ error: 'Server not found' });
+      return;
+    }
+    if (serverManager.isRunning(srv.id)) {
+      res.status(409).json({ error: 'Stop the server before replacing a world or dimension' });
+      return;
+    }
+    if (!req.file || !uploadedPath) {
+      res.status(400).json({ error: 'World .zip file is required' });
+      return;
+    }
+    const subPath = typeof req.query.subPath === 'string' && req.query.subPath.trim() ? req.query.subPath.trim() : undefined;
+    const registerRealmWorld =
+      typeof req.query.registerRealmWorld === 'string' && req.query.registerRealmWorld.trim()
+        ? req.query.registerRealmWorld.trim()
+        : undefined;
+    const envRaw = typeof req.query.environment === 'string' ? req.query.environment.trim().toUpperCase() : 'NORMAL';
+    const environment: 'NORMAL' | 'NETHER' | 'THE_END' =
+      envRaw === 'NETHER' || envRaw === 'THE_END' ? envRaw : 'NORMAL';
+
+    await replaceWorldFromZip(getServerDir(srv.id), req.params.worldName, uploadedPath, subPath);
     if (registerRealmWorld) {
       const cfg = await readRealmsConfigFromDisk(srv.id);
       const exists = cfg.worlds.some((w) => w.name.toLowerCase() === registerRealmWorld.toLowerCase());
@@ -99,6 +121,10 @@ worldsRouter.post('/:worldName/upload', requirePermission('backups'), upload.sin
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  } finally {
+    if (uploadedPath) {
+      await fs.rm(uploadedPath, { force: true }).catch(() => {});
+    }
   }
 });
 
@@ -221,6 +247,17 @@ schedulesRouter.post('/', requirePermission('schedules'), (req, res) => {
     res.status(400).json({ error: 'name, trigger, and action are required' });
     return;
   }
+  const VALID_ACTIONS: ScheduleAction[] = ['command', 'backup', 'backup_worlds', 'restart', 'start', 'stop'];
+  if (!VALID_ACTIONS.includes(action)) {
+    res.status(400).json({ error: 'Unsupported schedule action' });
+    return;
+  }
+  if (!hasScheduleActionPermission(req.user, action)) {
+    res.status(403).json({
+      error: `Missing permission "${requiredPermissionForScheduleAction(action)}" required for schedule action "${action}"`,
+    });
+    return;
+  }
   const err = validateTrigger(trigger);
   if (err) {
     res.status(400).json({ error: err });
@@ -248,6 +285,18 @@ schedulesRouter.patch('/:taskId', requirePermission('schedules'), (req, res) => 
     return;
   }
   const updates = req.body as Partial<ScheduledTask>;
+  const targetAction = updates.action || task.action;
+  const VALID_ACTIONS: ScheduleAction[] = ['command', 'backup', 'backup_worlds', 'restart', 'start', 'stop'];
+  if (!VALID_ACTIONS.includes(targetAction)) {
+    res.status(400).json({ error: 'Unsupported schedule action' });
+    return;
+  }
+  if (!hasScheduleActionPermission(req.user, targetAction)) {
+    res.status(403).json({
+      error: `Missing permission "${requiredPermissionForScheduleAction(targetAction)}" required for schedule action "${targetAction}"`,
+    });
+    return;
+  }
   if (typeof updates.name === 'string' && updates.name.trim()) task.name = updates.name.trim();
   if (updates.trigger) {
     const err = validateTrigger(updates.trigger);
@@ -273,11 +322,22 @@ schedulesRouter.post('/:taskId/run', requirePermission('schedules'), async (req,
     res.status(404).json({ error: 'Scheduled task not found' });
     return;
   }
+  if (!hasScheduleActionPermission(req.user, task.action)) {
+    res.status(403).json({
+      error: `Missing permission "${requiredPermissionForScheduleAction(task.action)}" required to run schedule action "${task.action}"`,
+    });
+    return;
+  }
   const result = await scheduleService.executeTask(task.id, true);
   res.json(result);
 });
 
 schedulesRouter.delete('/:taskId', requirePermission('schedules'), (req, res) => {
-  store.deleteSchedule(req.params.taskId);
+  const task = store.getSchedules(req.params.id).find((t) => t.id === req.params.taskId);
+  if (!task) {
+    res.status(404).json({ error: 'Scheduled task not found' });
+    return;
+  }
+  store.deleteSchedule(task.id);
   res.json({ ok: true });
 });

@@ -13,6 +13,30 @@ import type {
   WhitelistEntry,
 } from '../../../shared/types.js';
 
+const VALID_MC_USERNAME_RE = /^[a-zA-Z0-9_.-]{1,32}$/;
+const VALID_IP_RE = /^[a-fA-F0-9:.]{2,45}$/;
+
+function sanitizePlayerUsername(username: string): string {
+  const clean = (username || '').replace(/[\r\n\0]+/g, '').trim();
+  if (!VALID_MC_USERNAME_RE.test(clean)) {
+    throw new Error('Invalid Minecraft username (use letters, numbers, _, ., or -)');
+  }
+  return clean;
+}
+
+function sanitizeIpAddress(ip: string): string {
+  const clean = (ip || '').replace(/[\r\n\0]+/g, '').trim();
+  if (!VALID_IP_RE.test(clean)) {
+    throw new Error('Invalid IP address');
+  }
+  return clean;
+}
+
+function sanitizeReason(reason: string | undefined, fallback: string): string {
+  const clean = (reason || '').replace(/[\r\n\0]+/g, ' ').trim().slice(0, 200);
+  return clean || fallback;
+}
+
 function formatUuid(hex32: string): string {
   const clean = hex32.replace(/-/g, '').toLowerCase();
   if (clean.length !== 32) return hex32;
@@ -30,14 +54,14 @@ function offlineUuidForPlayer(name: string): string {
 }
 
 export async function lookupPlayerProfile(username: string): Promise<{ name: string; uuid: string }> {
-  const clean = username.trim();
+  const clean = sanitizePlayerUsername(username);
   try {
     const res = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(clean)}`, {
       headers: { 'User-Agent': USER_AGENT },
     });
     if (res.ok) {
       const data = (await res.json()) as { id: string; name: string };
-      if (data?.id && data?.name) {
+      if (data?.id && data?.name && VALID_MC_USERNAME_RE.test(data.name)) {
         return { name: data.name, uuid: formatUuid(data.id) };
       }
     }
@@ -120,12 +144,13 @@ export async function addWhitelistPlayer(serverId: string, serverDir: string, us
 }
 
 export async function removeWhitelistPlayer(serverId: string, serverDir: string, username: string): Promise<void> {
+  const cleanUser = sanitizePlayerUsername(username);
   const filePath = path.join(serverDir, 'whitelist.json');
   const list = await readJsonArray<WhitelistEntry>(filePath);
-  const next = list.filter((e) => e.name.toLowerCase() !== username.toLowerCase());
+  const next = list.filter((e) => e.name.toLowerCase() !== cleanUser.toLowerCase());
   await atomicWriteFile(filePath, `${JSON.stringify(next, null, 2)}\n`);
   if (serverManager.isRunning(serverId)) {
-    serverManager.sendCommand(serverId, `whitelist remove ${username}`);
+    serverManager.sendCommand(serverId, `whitelist remove ${cleanUser}`);
     serverManager.sendCommand(serverId, 'whitelist reload');
   }
 }
@@ -157,12 +182,13 @@ export async function addOpPlayer(
 }
 
 export async function removeOpPlayer(serverId: string, serverDir: string, username: string): Promise<void> {
+  const cleanUser = sanitizePlayerUsername(username);
   const filePath = path.join(serverDir, 'ops.json');
   const list = await readJsonArray<OpEntry>(filePath);
-  const next = list.filter((e) => e.name.toLowerCase() !== username.toLowerCase());
+  const next = list.filter((e) => e.name.toLowerCase() !== cleanUser.toLowerCase());
   await atomicWriteFile(filePath, `${JSON.stringify(next, null, 2)}\n`);
   if (serverManager.isRunning(serverId)) {
-    serverManager.sendCommand(serverId, `deop ${username}`);
+    serverManager.sendCommand(serverId, `deop ${cleanUser}`);
   }
 }
 
@@ -173,6 +199,7 @@ export async function banPlayer(
   reason = 'Banned by operator',
 ): Promise<BannedPlayerEntry> {
   const profile = await lookupPlayerProfile(username);
+  const safeReason = sanitizeReason(reason, 'Banned by operator');
   const filePath = path.join(serverDir, 'banned-players.json');
   const list = await readJsonArray<BannedPlayerEntry>(filePath);
   const entry: BannedPlayerEntry = {
@@ -181,7 +208,7 @@ export async function banPlayer(
     created: new Date().toISOString(),
     source: 'MCServerManager',
     expires: 'forever',
-    reason: reason.trim() || 'Banned by operator',
+    reason: safeReason,
   };
   if (!list.some((e) => e.name.toLowerCase() === profile.name.toLowerCase())) {
     list.push(entry);
@@ -194,12 +221,13 @@ export async function banPlayer(
 }
 
 export async function unbanPlayer(serverId: string, serverDir: string, username: string): Promise<void> {
+  const cleanUser = sanitizePlayerUsername(username);
   const filePath = path.join(serverDir, 'banned-players.json');
   const list = await readJsonArray<BannedPlayerEntry>(filePath);
-  const next = list.filter((e) => e.name.toLowerCase() !== username.toLowerCase());
+  const next = list.filter((e) => e.name.toLowerCase() !== cleanUser.toLowerCase());
   await atomicWriteFile(filePath, `${JSON.stringify(next, null, 2)}\n`);
   if (serverManager.isRunning(serverId)) {
-    serverManager.sendCommand(serverId, `pardon ${username}`);
+    serverManager.sendCommand(serverId, `pardon ${cleanUser}`);
   }
 }
 
@@ -209,7 +237,8 @@ export async function banIp(
   ip: string,
   reason = 'Banned by operator',
 ): Promise<BannedIpEntry> {
-  const cleanIp = ip.trim();
+  const cleanIp = sanitizeIpAddress(ip);
+  const safeReason = sanitizeReason(reason, 'Banned by operator');
   const filePath = path.join(serverDir, 'banned-ips.json');
   const list = await readJsonArray<BannedIpEntry>(filePath);
   const entry: BannedIpEntry = {
@@ -217,7 +246,7 @@ export async function banIp(
     created: new Date().toISOString(),
     source: 'MCServerManager',
     expires: 'forever',
-    reason: reason.trim() || 'Banned by operator',
+    reason: safeReason,
   };
   if (!list.some((e) => e.ip === cleanIp)) {
     list.push(entry);
@@ -230,12 +259,13 @@ export async function banIp(
 }
 
 export async function unbanIp(serverId: string, serverDir: string, ip: string): Promise<void> {
+  const cleanIp = sanitizeIpAddress(ip);
   const filePath = path.join(serverDir, 'banned-ips.json');
   const list = await readJsonArray<BannedIpEntry>(filePath);
-  const next = list.filter((e) => e.ip !== ip.trim());
+  const next = list.filter((e) => e.ip !== cleanIp);
   await atomicWriteFile(filePath, `${JSON.stringify(next, null, 2)}\n`);
   if (serverManager.isRunning(serverId)) {
-    serverManager.sendCommand(serverId, `pardon-ip ${ip.trim()}`);
+    serverManager.sendCommand(serverId, `pardon-ip ${cleanIp}`);
   }
 }
 
@@ -243,5 +273,7 @@ export function kickPlayer(serverId: string, username: string, reason = 'Kicked 
   if (!serverManager.isRunning(serverId)) {
     throw new Error('Server must be online to kick a player');
   }
-  serverManager.sendCommand(serverId, `kick ${username.trim()} ${reason.trim()}`);
+  const cleanUser = sanitizePlayerUsername(username);
+  const safeReason = sanitizeReason(reason, 'Kicked by operator');
+  serverManager.sendCommand(serverId, `kick ${cleanUser} ${safeReason}`);
 }

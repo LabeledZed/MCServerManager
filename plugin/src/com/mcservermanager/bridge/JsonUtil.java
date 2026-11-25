@@ -156,9 +156,11 @@ public final class JsonUtil {
     }
 
     private static final class Parser {
+        private static final int MAX_DEPTH = 64;
         private final String s;
         private final int len;
         private int pos;
+        private int depth;
 
         Parser(String s) {
             this.s = s;
@@ -187,39 +189,53 @@ public final class JsonUtil {
         }
 
         Map<String, Object> readObject() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            pos++; // '{'
-            while (!eof()) {
-                skipWs();
-                if (eof()) break;
-                if (s.charAt(pos) == '}') { pos++; break; }
-                if (s.charAt(pos) == ',') { pos++; continue; }
-                if (s.charAt(pos) != '"') break;
-                String key = readString();
-                skipWs();
-                if (eof() || s.charAt(pos) != ':') break;
-                pos++; // ':'
-                Object val = readValue();
-                map.put(key, val);
-                skipWs();
-                if (!eof() && s.charAt(pos) == ',') pos++;
+            if (++depth > MAX_DEPTH) {
+                throw new IllegalArgumentException("JSON nesting depth exceeds maximum allowed limit");
             }
-            return map;
+            try {
+                Map<String, Object> map = new LinkedHashMap<>();
+                pos++; // '{'
+                while (!eof()) {
+                    skipWs();
+                    if (eof()) break;
+                    if (s.charAt(pos) == '}') { pos++; break; }
+                    if (s.charAt(pos) == ',') { pos++; continue; }
+                    if (s.charAt(pos) != '"') break;
+                    String key = readString();
+                    skipWs();
+                    if (eof() || s.charAt(pos) != ':') break;
+                    pos++; // ':'
+                    Object val = readValue();
+                    map.put(key, val);
+                    skipWs();
+                    if (!eof() && s.charAt(pos) == ',') pos++;
+                }
+                return map;
+            } finally {
+                depth--;
+            }
         }
 
         List<Object> readArray() {
-            List<Object> list = new ArrayList<>();
-            pos++; // '['
-            while (!eof()) {
-                skipWs();
-                if (eof()) break;
-                if (s.charAt(pos) == ']') { pos++; break; }
-                if (s.charAt(pos) == ',') { pos++; continue; }
-                list.add(readValue());
-                skipWs();
-                if (!eof() && s.charAt(pos) == ',') pos++;
+            if (++depth > MAX_DEPTH) {
+                throw new IllegalArgumentException("JSON nesting depth exceeds maximum allowed limit");
             }
-            return list;
+            try {
+                List<Object> list = new ArrayList<>();
+                pos++; // '['
+                while (!eof()) {
+                    skipWs();
+                    if (eof()) break;
+                    if (s.charAt(pos) == ']') { pos++; break; }
+                    if (s.charAt(pos) == ',') { pos++; continue; }
+                    list.add(readValue());
+                    skipWs();
+                    if (!eof() && s.charAt(pos) == ',') pos++;
+                }
+                return list;
+            } finally {
+                depth--;
+            }
         }
 
         String readString() {

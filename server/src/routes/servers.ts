@@ -6,7 +6,12 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { getServerDir } from '../config.js';
 import { store } from '../services/store.js';
-import { serverManager } from '../services/serverManager.js';
+import {
+  serverManager,
+  validateCustomJvmArgs,
+  validateServerJarFile,
+} from '../services/serverManager.js';
+import { validateAndResolveJavaPath } from '../services/javaService.js';
 import { installServerSoftware } from '../services/catalogService.js';
 import { installBridgePlugin, supportsBridgePlugin, uninstallBridgePlugin } from '../services/bridgeService.js';
 import { readVelocityBindPort, seedStarterVelocityFiles, syncVelocityBindPort } from '../services/velocityService.js';
@@ -15,11 +20,25 @@ import {
   pickLocalFolderDialog,
   transferServerFolder,
 } from '../services/importService.js';
-import { requireAuth, requirePermission } from '../services/authService.js';
+import { isLoopbackAddress, requireAuth, requirePermission } from '../services/authService.js';
 import { atomicWriteFile, getDirectorySize } from '../utils/fsSafe.js';
-import type { JvmPreset, ServerConfig, ServerSoftware, ServerSummary } from '../../../shared/types.js';
+import type { JvmPreset, ServerConfig, ServerSoftware, ServerSummary, UserAccount } from '../../../shared/types.js';
 
 export const serversRouter = Router();
+
+function canUserViewSettings(user?: UserAccount | null): boolean {
+  if (!user) return false;
+  return user.role === 'owner' || user.permissions.includes('settings');
+}
+
+function assertLocalOwnerForImport(req: { socket: { remoteAddress?: string }; user?: UserAccount | null }): void {
+  if (!isLoopbackAddress(req.socket.remoteAddress)) {
+    throw new Error('Local folder import is restricted to localhost connections');
+  }
+  if (!req.user || req.user.role !== 'owner') {
+    throw new Error('Only the owner account can import local filesystem folders');
+  }
+}
 
 const DEFAULT_START_PORT = 25560;
 const SKIPPED_SCANNER_PORT = 25565;
@@ -45,7 +64,11 @@ function makeServerId(name: string): string {
   return `${slug || 'server'}-${crypto.randomBytes(3).toString('hex')}`;
 }
 
-async function buildSummary(srv: ServerConfig, includeDiskSize = false): Promise<ServerSummary> {
+async function buildSummary(
+  srv: ServerConfig,
+  includeDiskSize = false,
+  canViewSettings = true,
+): Promise<ServerSummary> {
   const dir = getServerDir(srv.id);
   if (srv.software === 'velocity' && fsSync.existsSync(dir)) {
     const tomlPort = await readVelocityBindPort(dir);
@@ -55,9 +78,12 @@ async function buildSummary(srv: ServerConfig, includeDiskSize = false): Promise
     }
   }
   const diskSizeBytes = includeDiskSize && fsSync.existsSync(dir) ? await getDirectorySize(dir, 7) : undefined;
+  const { bridgeToken: _omitBridgeToken, ...publicConfig } = srv;
   return {
-    ...srv,
-    directory: dir,
+    ...publicConfig,
+    javaPath: canViewSettings ? srv.javaPath : 'auto',
+    bridgePort: canViewSettings ? srv.bridgePort : undefined,
+    directory: canViewSettings ? dir : srv.id,
     runtime: serverManager.getRuntime(srv.id),
     diskSizeBytes,
   };
@@ -84,23 +110,26 @@ serversRouter.get('/next-port', requireAuth, (_req, res) => {
   res.json({ port: getNextAvailablePort() });
 });
 
-serversRouter.get('/', requireAuth, async (_req, res) => {
-  const summaries = await Promise.all(store.getServers().map((s) => buildSummary(s, false)));
+serversRouter.get('/', requireAuth, async (req, res) => {
+  const viewSettings = canUserViewSettings(req.user);
+  const summaries = await Promise.all(store.getServers().map((s) => buildSummary(s, false, viewSettings)));
   res.json(summaries);
 });
 
-serversRouter.post('/import/pick-folder', requirePermission('settings'), async (_req, res) => {
+serversRouter.post('/import/pick-folder', requirePermission('settings'), async (req, res) => {
   try {
+    assertLocalOwnerForImport(req);
     const selectedPath = await pickLocalFolderDialog();
     res.json({ path: selectedPath });
   } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    res.status(403).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 
 serversRouter.post('/import/inspect', requirePermission('settings'), async (req, res) => {
   const sourcePath = String((req.body as { sourcePath?: string }).sourcePath || '');
   try {
+    assertLocalOwnerForImport(req);
     const info = await inspectExistingServerFolder(sourcePath);
     res.json(info);
   } catch (err) {
@@ -130,18 +159,21 @@ serversRouter.post('/import', requirePermission('settings'), async (req, res) =>
   }
 
   try {
+    assertLocalOwnerForImport(req);
     const inspected = await inspectExistingServerFolder(body.sourcePath);
     const name = (body.name || inspected.suggestedName).trim();
     const software: ServerSoftware = body.software || inspected.software;
     const mcVersion = (body.mcVersion || inspected.mcVersion).trim();
-    const jarFile = (body.jarFile || inspected.jarFile).trim() || 'server.jar';
+    const rawJarFile = (body.jarFile || inspected.jarFile).trim() || 'server.jar';
     const port = Math.min(65535, Math.max(1024, Number(body.port) || inspected.port || 25565));
     const minRamMb = Math.max(256, Number(body.minRamMb) || 1024);
     const maxRamMb = Math.max(minRamMb, Number(body.maxRamMb) || 4096);
-    const transferMode = body.transferMode === 'copy' ? 'copy' : 'move';
+    const transferMode = body.transferMode === 'move' ? 'move' : 'copy';
+    const validatedJavaPath = await validateAndResolveJavaPath(body.javaPath || 'auto');
 
     const id = makeServerId(name);
     const destDir = getServerDir(id);
+    const jarFile = validateServerJarFile(destDir, rawJarFile);
     await transferServerFolder(inspected.sourcePath, destDir, transferMode);
 
     const shouldInstallBridge =
@@ -157,7 +189,7 @@ serversRouter.post('/import', requirePermission('settings'), async (req, res) =>
       port,
       minRamMb,
       maxRamMb,
-      javaPath: body.javaPath || 'auto',
+      javaPath: validatedJavaPath,
       jvmPreset: body.jvmPreset || 'aikar',
       customJvmArgs: '',
       autoStart: false,
@@ -179,7 +211,7 @@ serversRouter.post('/import', requirePermission('settings'), async (req, res) =>
       await installBridgePlugin(server).catch(() => {});
     }
 
-    res.status(201).json(await buildSummary(server, true));
+    res.status(201).json(await buildSummary(server, true, true));
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
   }
@@ -191,7 +223,7 @@ serversRouter.get('/:id', requireAuth, async (req, res) => {
     res.status(404).json({ error: 'Server not found' });
     return;
   }
-  res.json(await buildSummary(srv, true));
+  res.json(await buildSummary(srv, true, canUserViewSettings(req.user)));
 });
 
 serversRouter.post('/', requirePermission('settings'), async (req, res) => {
@@ -222,6 +254,14 @@ serversRouter.post('/', requirePermission('settings'), async (req, res) => {
   const minRamMb = Math.max(256, Number(body.minRamMb) || 1024);
   const maxRamMb = Math.max(minRamMb, Number(body.maxRamMb) || 2048);
 
+  let validatedJavaPath = 'auto';
+  try {
+    validatedJavaPath = await validateAndResolveJavaPath(body.javaPath || 'auto');
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+
   const id = makeServerId(name);
   const serverDir = getServerDir(id);
   await fs.mkdir(serverDir, { recursive: true });
@@ -235,7 +275,7 @@ serversRouter.post('/', requirePermission('settings'), async (req, res) => {
     port,
     minRamMb,
     maxRamMb,
-    javaPath: body.javaPath || 'auto',
+    javaPath: validatedJavaPath,
     jvmPreset: body.jvmPreset || 'aikar',
     customJvmArgs: '',
     autoStart: Boolean(body.autoStart),
@@ -387,14 +427,28 @@ serversRouter.patch('/:id', requirePermission('settings'), async (req, res) => {
   }
   if (typeof updates.minRamMb === 'number' && updates.minRamMb >= 256) srv.minRamMb = Math.round(updates.minRamMb);
   if (typeof updates.maxRamMb === 'number' && updates.maxRamMb >= srv.minRamMb) srv.maxRamMb = Math.round(updates.maxRamMb);
-  if (typeof updates.javaPath === 'string') srv.javaPath = updates.javaPath;
-  if (updates.jvmPreset) srv.jvmPreset = updates.jvmPreset;
-  if (typeof updates.customJvmArgs === 'string') srv.customJvmArgs = updates.customJvmArgs;
-  if (typeof updates.jarFile === 'string' && updates.jarFile.trim()) srv.jarFile = updates.jarFile.trim();
+  try {
+    if (typeof updates.javaPath === 'string') {
+      srv.javaPath = await validateAndResolveJavaPath(updates.javaPath);
+    }
+    if (updates.jvmPreset) srv.jvmPreset = updates.jvmPreset;
+    if (typeof updates.customJvmArgs === 'string') {
+      validateCustomJvmArgs(updates.customJvmArgs);
+      srv.customJvmArgs = updates.customJvmArgs.trim();
+    }
+    if (typeof updates.jarFile === 'string' && updates.jarFile.trim()) {
+      srv.jarFile = validateServerJarFile(getServerDir(srv.id), updates.jarFile);
+    }
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
   if (typeof updates.autoStart === 'boolean') srv.autoStart = updates.autoStart;
   if (typeof updates.autoRestart === 'boolean') srv.autoRestart = updates.autoRestart;
   if (typeof updates.maxRestartAttempts === 'number') srv.maxRestartAttempts = Math.min(10, Math.max(1, updates.maxRestartAttempts));
-  if (typeof updates.stopCommand === 'string' && updates.stopCommand.trim()) srv.stopCommand = updates.stopCommand.trim();
+  if (typeof updates.stopCommand === 'string' && updates.stopCommand.trim()) {
+    srv.stopCommand = updates.stopCommand.replace(/[\r\n\0]+/g, ' ').trim();
+  }
   if (typeof updates.eulaAccepted === 'boolean') {
     srv.eulaAccepted = updates.eulaAccepted;
     if (srv.software !== 'velocity') {

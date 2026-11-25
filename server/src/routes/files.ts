@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 import multer from 'multer';
@@ -7,9 +8,12 @@ import { getServerDir } from '../config.js';
 import { store } from '../services/store.js';
 import { requirePermission } from '../services/authService.js';
 import {
+  assertSafeZipEntries,
   atomicWriteFile,
   detectConfigFormat,
   isBinaryFilename,
+  MAX_ZIP_SINGLE_ENTRY_BYTES,
+  MAX_ZIP_UNCOMPRESSED_BYTES,
   normalizeRelPath,
   resolveInside,
 } from '../utils/fsSafe.js';
@@ -18,8 +22,12 @@ import type { FileEntry } from '../../../shared/types.js';
 export const filesRouter = Router({ mergeParams: true });
 
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 250 * 1024 * 1024 },
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, _file, cb) =>
+      cb(null, `mcsm-upload-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.tmp`),
+  }),
+  limits: { fileSize: 250 * 1024 * 1024, files: 20 },
 });
 
 filesRouter.get('/', requirePermission('files'), async (req, res) => {
@@ -37,9 +45,11 @@ filesRouter.get('/', requirePermission('files'), async (req, res) => {
     const items: FileEntry[] = [];
 
     for (const entry of dirEntries) {
+      if (entry.isSymbolicLink()) continue;
       const fullPath = path.join(fullDir, entry.name);
       try {
-        const stat = await fs.stat(fullPath);
+        const stat = await fs.lstat(fullPath);
+        if (stat.isSymbolicLink()) continue;
         const rel = normalizeRelPath(path.relative(serverDir, fullPath));
         const isDir = entry.isDirectory();
         const isBin = isDir ? false : isBinaryFilename(entry.name);
@@ -129,12 +139,14 @@ filesRouter.post('/upload', requirePermission('files'), upload.array('files', 20
     for (const file of uploaded) {
       const safeName = path.basename(file.originalname);
       const destFile = resolveInside(destDir, safeName);
-      await fs.writeFile(destFile, file.buffer);
+      await fs.copyFile(file.path, destFile);
       saved.push(safeName);
     }
     res.status(201).json({ ok: true, files: saved });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  } finally {
+    await Promise.all(uploaded.map((f) => (f.path ? fs.rm(f.path, { force: true }).catch(() => {}) : Promise.resolve())));
   }
 });
 
@@ -196,15 +208,26 @@ filesRouter.post('/extract', requirePermission('files'), async (req, res) => {
     const zipPath = resolveInside(serverDir, rel);
     const targetDir = path.dirname(zipPath);
     const zip = new AdmZip(zipPath);
-    for (const entry of zip.getEntries()) {
+    const entries = zip.getEntries();
+    assertSafeZipEntries(entries);
+    let extractedBytes = 0;
+    for (const entry of entries) {
       const inner = entry.entryName.replace(/\\/g, '/');
       if (!inner || inner.startsWith('..')) continue;
       const dest = resolveInside(targetDir, inner);
       if (entry.isDirectory) {
         await fs.mkdir(dest, { recursive: true });
       } else {
+        const data = entry.getData();
+        if (data.byteLength > MAX_ZIP_SINGLE_ENTRY_BYTES) {
+          throw new Error(`Archive entry "${inner}" exceeds maximum allowed file size`);
+        }
+        extractedBytes += data.byteLength;
+        if (extractedBytes > MAX_ZIP_UNCOMPRESSED_BYTES) {
+          throw new Error('Archive extraction aborted: uncompressed data exceeds 1 GB limit');
+        }
         await fs.mkdir(path.dirname(dest), { recursive: true });
-        await fs.writeFile(dest, entry.getData());
+        await fs.writeFile(dest, data);
       }
     }
     res.json({ ok: true });

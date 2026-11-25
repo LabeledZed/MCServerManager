@@ -101,10 +101,18 @@ export function pingMinecraftServer(host = '127.0.0.1', port = 25565, timeoutMs 
     });
 
     socket.on('data', (chunk) => {
+      if (buffer.length + chunk.length > 512 * 1024) {
+        done(null);
+        return;
+      }
       buffer = Buffer.concat([buffer, chunk]);
       try {
         const pktLen = readVarInt(buffer, 0);
         if (!pktLen) return;
+        if (pktLen.value <= 0 || pktLen.value > 512 * 1024) {
+          done(null);
+          return;
+        }
         if (buffer.length < pktLen.nextOffset + pktLen.value) return;
 
         const pktId = readVarInt(buffer, pktLen.nextOffset);

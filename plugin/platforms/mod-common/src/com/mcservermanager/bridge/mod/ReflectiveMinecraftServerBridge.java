@@ -220,6 +220,10 @@ public final class ReflectiveMinecraftServerBridge {
                             sendJson(ex, 400, "{\"error\":\"name and value are required\"}");
                             return;
                         }
+                        if (!ruleName.matches("^[a-zA-Z0-9_]{1,64}$") || !ruleVal.matches("^[a-zA-Z0-9_.-]{1,64}$")) {
+                            sendJson(ex, 400, "{\"error\":\"Invalid gamerule name or value\"}");
+                            return;
+                        }
                         String err = runOnServerThread(() -> {
                             boolean ok = executeServerCommand("gamerule " + ruleName + " " + ruleVal);
                             return ok ? null : "Failed to run gamerule command";
@@ -789,7 +793,11 @@ public final class ReflectiveMinecraftServerBridge {
 
         switch (action) {
             case "gamemode": {
-                String gm = JsonUtil.asString(body.get("value"), "survival").toLowerCase(Locale.ROOT);
+                String gm = JsonUtil.asString(body.get("value"), "survival").trim().toLowerCase(Locale.ROOT);
+                if (!"survival".equals(gm) && !"creative".equals(gm) && !"adventure".equals(gm) && !"spectator".equals(gm)
+                        && !"0".equals(gm) && !"1".equals(gm) && !"2".equals(gm) && !"3".equals(gm)) {
+                    return "Invalid gamemode";
+                }
                 executeServerCommand("gamemode " + gm + " " + safePlayer);
                 return null;
             }
@@ -817,8 +825,14 @@ public final class ReflectiveMinecraftServerBridge {
                     double x = JsonUtil.asDouble(body.get("x"), 0.0);
                     double y = JsonUtil.asDouble(body.get("y"), 64.0);
                     double z = JsonUtil.asDouble(body.get("z"), 0.0);
+                    if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
+                        return "Invalid teleport coordinates";
+                    }
                     String w = JsonUtil.asString(body.get("world"), "").trim();
                     if (!w.isEmpty() && !isPre113) {
+                        if (!w.matches("^(?:[a-z0-9_.-]+:)?[a-z0-9_./-]{1,64}$")) {
+                            return "Invalid target dimension ID";
+                        }
                         executeServerCommand("execute in " + w + " run tp " + safePlayer + " " + x + " " + y + " " + z);
                     } else {
                         executeServerCommand("tp " + safePlayer + " " + x + " " + y + " " + z);
@@ -851,9 +865,11 @@ public final class ReflectiveMinecraftServerBridge {
         }
     }
 
-    private boolean executeServerCommand(String command) {
+    private boolean executeServerCommand(String rawCommand) {
         Object srv = this.minecraftServer;
-        if (srv == null) return false;
+        if (srv == null || rawCommand == null) return false;
+        String command = rawCommand.replaceAll("[\\r\\n\\0]+", " ").trim();
+        if (command.isEmpty()) return false;
         try {
             Object commands = invokeAny(
                 srv,
@@ -1124,7 +1140,8 @@ public final class ReflectiveMinecraftServerBridge {
     }
 
     private static String stripColorCodes(String input) {
-        return input.replaceAll("[&\u00A7][0-9A-Fa-fK-Ok-oRr]", "");
+        if (input == null) return "";
+        return input.replaceAll("[\\r\\n\\0]+", " ").replaceAll("[&\u00A7][0-9A-Fa-fK-Ok-oRr]", "");
     }
 
     private static String readBody(HttpExchange ex) throws IOException {

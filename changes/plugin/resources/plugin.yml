@@ -1,0 +1,12 @@
+name: MCServerManagerBridge
+version: 2.3.0
+main: com.mcservermanager.bridge.MCServerManagerBridgePlugin
+api-version: '1.13'
+author: MCServerManager
+description: Loopback management bridge for MCServerManager (live gamerules, multi-world realms, colored portals, per-world plugins, optional TPA/back, and player controls).
+folia-supported: true
+commands:
+  mv:
+    description: Manage MCServerManager multi-world realms and teleport between worlds.
+    usage: /mv <list|tp|setspawn|reload>
+    aliases: [mcsm]
